@@ -17,6 +17,7 @@ limitations under the License.
 package benchmark
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"testing"
@@ -35,7 +36,10 @@ import (
 )
 
 const (
-	configFile = "config/performance-config.yaml"
+	configFile        = "config/performance-config.yaml"
+	createNodesOpcode = "CreateNodes"
+	createPodsOpcode  = "CreatePods"
+	barrierOpcode     = "Barrier"
 )
 
 var (
@@ -51,87 +55,194 @@ var (
 	}
 )
 
-// testCase configures a test case to run the scheduler performance test. Users should be able to
-// provide this via a YAML file.
-//
-// It specifies nodes and pods in the cluster before running the test. It also specifies the pods to
-// schedule during the test. The config can be as simple as just specify number of nodes/pods, where
-// default spec will be applied. It also allows the user to specify a pod spec template for more
-// complicated test cases.
-//
-// It also specifies the metrics to be collected after the test. If nothing is specified, default metrics
-// such as scheduling throughput and latencies will be collected.
+// testCase defines a set of test cases that intend to test the performance of
+// similar workloads of varying sizes with shared overall settings such as
+// feature gates and metrics collected.
 type testCase struct {
-	// description of the test case
-	Desc string
-	// configures nodes in the cluster
-	Nodes nodeCase
-	// configures pods in the cluster before running the tests
-	InitPods []podCase
-	// configures the test to now wait for init pods to schedule before creating
-	// test pods.
-	SkipWaitUntilInitPodsScheduled bool
-	// pods to be scheduled during the test.
-	PodsToSchedule podCase
-	// optional, feature gates to set before running the test
+	// Name of the testCase.
+	Name string
+	// Feature gates to set before running the test. Optional.
 	FeatureGates map[featuregate.Feature]bool
-	// optional, replaces default defaultMetricsCollectorConfig if supplied.
+	// List of metrics to collect. Optional, defaults to
+	// defaultMetricsCollectorConfig if unspecified.
 	MetricsCollectorConfig *metricsCollectorConfig
+	// List of workloads to run under this testCase.
+	Workloads []*workload
 }
 
-type nodeCase struct {
-	Num              int
+// workload is a subtest under a testCase that tests the scheduler performance
+// for a certain ordering of ops. The set of nodes created and pods scheduled
+// in a workload may be heterogenous.
+type workload struct {
+	// Name of the workload.
+	Name string
+	// A list of ops to be executed serially. Each element of the list must be
+	// createNodesOp, createPodsOp, or barrierOp.
+	Ops []op
+}
+
+func (w *workload) collectsMetrics() bool {
+	for _, op := range w.Ops {
+		if op.realOp.collectsMetrics() {
+			return true
+		}
+	}
+	return false
+}
+
+// op is a dummy struct which stores the real op in itself.
+type op struct {
+	realOp realOp
+}
+
+// UnmarshalJSON is a custom unmarshaler for the op struct since we don't know
+// at runtime which op we're decoding.
+func (op *op) UnmarshalJSON(b []byte) error {
+	possibleOps := []realOp{
+		&createNodesOp{},
+		&createPodsOp{},
+		&barrierOp{},
+	}
+	var firstError error
+	for _, possibleOp := range possibleOps {
+		if err := json.Unmarshal(b, possibleOp); err == nil {
+			if err2 := possibleOp.isValid(); err2 == nil {
+				op.realOp = possibleOp
+				return nil
+			} else if firstError == nil {
+				// Don't return an error yet. Even though this op is invalid, it may
+				// still match other possible ops.
+				firstError = err2
+			}
+		}
+	}
+	return fmt.Errorf("cannot unmarshal %s into any known op type: %v", string(b), firstError)
+}
+
+// realOp is an interface that is implemented by different structs. To evaluate
+// the validity of ops at parse-time, a isValid function must be implemented.
+type realOp interface {
+	// isValid verifies that the validity of the op such as making sure the
+	// opcode matches the expected value.
+	isValid() error
+	// collectsMetrics checks if the implementing struct collects metrics.
+	collectsMetrics() bool
+}
+
+// createNodesOp defines an op where nodes are created as a part of a workload.
+type createNodesOp struct {
+	// Must always be "CreateNodes".
+	Op string
+	// Number of nodes to create.
+	Count int
+	// Path to spec file describing the nodes to create. Optional.
 	NodeTemplatePath *string
-	// At most one of the following strategies can be defined. If not specified, default to TrivialNodePrepareStrategy.
+	// At most one of the following strategies can be defined. Optional, defaults
+	// to TrivialNodePrepareStrategy if unspecified.
 	NodeAllocatableStrategy  *testutils.NodeAllocatableStrategy
 	LabelNodePrepareStrategy *testutils.LabelNodePrepareStrategy
 	UniqueNodeLabelStrategy  *testutils.UniqueNodeLabelStrategy
 }
 
-type podCase struct {
-	Num                               int
-	PodTemplatePath                   *string
+func (cno *createNodesOp) isValid() error {
+	if cno.Op != createNodesOpcode {
+		return fmt.Errorf("opcode does not match: got %s, want %s", cno.Op, createNodesOpcode)
+	}
+	if cno.Count <= 0 {
+		return fmt.Errorf("number of nodes cannot be non-positive")
+	}
+	return nil
+}
+
+func (*createNodesOp) collectsMetrics() bool {
+	return false
+}
+
+// createPodsOp defines an op where pods are scheduled as a part of a workload.
+// The test can block on the completion of this op before moving forward or
+// continue asynchronously.
+type createPodsOp struct {
+	// Must always be "SchedulePods".
+	Op string
+	// Number of pods to schedule.
+	Count int
+	// Whether or not to enable metrics collection for this createPodsOp.
+	// Optional. Both CollectMetrics and SkipWaitToCompletion cannot be true at
+	// the same time for a particular createPodsOp.
+	CollectMetrics bool
+	// Namespace the pods should be created in. Optional, defaults to a unique
+	// namespace of the format "op-<number>".
+	Namespace *string
+	// Path to spec file describing the pods to schedule. Optional.
+	PodTemplatePath *string
+	// Whether or not to wait for all pods in this op to get scheduled. Optional,
+	// defaults to false.
+	SkipWaitToCompletion bool
+	// Persistent volume settings for the pods to be scheduled. Optional.
 	PersistentVolumeTemplatePath      *string
 	PersistentVolumeClaimTemplatePath *string
 }
 
-// simpleTestCases defines a set of test cases that share the same template (node spec, pod spec, etc)
-// with testParams(e.g., NumNodes) being overridden. This provides a convenient way to define multiple tests
-// with various sizes.
-type simpleTestCases struct {
-	Template testCase
-	Params   []testParams
+func (cpo *createPodsOp) isValid() error {
+	if cpo.Op != createPodsOpcode {
+		return fmt.Errorf("opcode does not match: got %s, want %s", cpo.Op, createPodsOpcode)
+	}
+	if cpo.Count <= 0 {
+		return fmt.Errorf("number of pods cannot be non-positive")
+	}
+	if cpo.CollectMetrics && cpo.SkipWaitToCompletion {
+		return fmt.Errorf("CollectMetrics and SkipWaitToCompletion cannot both be true at the same time")
+	}
+	return nil
 }
 
-type testParams struct {
-	NumNodes          int
-	NumInitPods       []int
-	NumPodsToSchedule int
+func (cpo *createPodsOp) collectsMetrics() bool {
+	return cpo.CollectMetrics
 }
 
-type testDataCollector interface {
-	run(stopCh chan struct{})
-	collect() []DataItem
+// barrierOp defines an op that can be used to wait until all scheduled pods of
+// one or many namespaces have been bound to nodes. This is useful when pods
+// were scheduled with SkipWaitToCompletion set to true. A barrierOp is added
+// at the end of each each workload automatically.
+type barrierOp struct {
+	// Must always be "Barrier".
+	Op string
+	// Namespaces to block on. Optional, defaults to all namespaces.
+	Namespaces []string
+}
+
+func (bo *barrierOp) isValid() error {
+	if bo.Op != barrierOpcode {
+		return fmt.Errorf("opcode does not match: got %s, want %s", bo.Op, barrierOpcode)
+	}
+	return nil
+}
+
+func (*barrierOp) collectsMetrics() bool {
+	return false
 }
 
 func BenchmarkPerfScheduling(b *testing.B) {
-	dataItems := DataItems{Version: "v1"}
-	tests, err := parseTestCases(configFile)
+	testCases, err := getTestCases(configFile)
 	if err != nil {
 		b.Fatal(err)
 	}
+	if err = validateTestCases(testCases); err != nil {
+		b.Fatal(err)
+	}
 
-	for _, test := range tests {
-		initPods := 0
-		for _, p := range test.InitPods {
-			initPods += p.Num
-		}
-		name := fmt.Sprintf("%v/%vNodes/%vInitPods/%vPodsToSchedule", test.Desc, test.Nodes.Num, initPods, test.PodsToSchedule.Num)
-		b.Run(name, func(b *testing.B) {
-			for feature, flag := range test.FeatureGates {
-				defer featuregatetesting.SetFeatureGateDuringTest(b, utilfeature.DefaultFeatureGate, feature, flag)()
+	dataItems := DataItems{Version: "v1"}
+	for _, tc := range testCases {
+		b.Run(tc.Name, func(b *testing.B) {
+			for _, w := range tc.Workloads {
+				b.Run(w.Name, func(b *testing.B) {
+					for feature, flag := range tc.FeatureGates {
+						resetFunc := featuregatetesting.SetFeatureGateDuringTest(b, utilfeature.DefaultFeatureGate, feature, flag)
+						defer resetFunc()
+					}
+					dataItems.DataItems = append(dataItems.DataItems, runWorkload(b, tc, w)...)
+				})
 			}
-			dataItems.DataItems = append(dataItems.DataItems, perfScheduling(test, b)...)
 		})
 	}
 	if err := dataItems2JSONFile(dataItems, b.Name()); err != nil {
@@ -139,170 +250,244 @@ func BenchmarkPerfScheduling(b *testing.B) {
 	}
 }
 
-func perfScheduling(test testCase, b *testing.B) []DataItem {
+func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
+	var dataItems []DataItem
+	numPodsScheduledPerNamespace := make(map[string]int)
+
 	finalFunc, podInformer, clientset := mustSetupScheduler()
 	defer finalFunc()
 
-	nodePreparer, err := getNodePreparer(test.Nodes, clientset)
-	if err != nil {
-		b.Fatal(err)
-	}
-	if err := nodePreparer.PrepareNodes(); err != nil {
-		b.Fatal(err)
-	}
-	defer nodePreparer.CleanupNodes()
-
-	total := 0
-	for _, p := range test.InitPods {
-		if err := createPods(setupNamespace, p, clientset); err != nil {
-			b.Fatal(err)
-		}
-		total += p.Num
-	}
-	if !test.SkipWaitUntilInitPodsScheduled {
-		if err := waitNumPodsScheduled(b, total, podInformer, setupNamespace); err != nil {
-			b.Fatal(err)
-		}
-	}
-
-	// start benchmark
-	b.ResetTimer()
-
-	// Start test data collectors.
-	stopCh := make(chan struct{})
-	collectors := getTestDataCollectors(test, podInformer, b)
-	for _, collector := range collectors {
-		go collector.run(stopCh)
-	}
-
-	// Schedule the main workload
-	if err := createPods(testNamespace, test.PodsToSchedule, clientset); err != nil {
-		b.Fatal(err)
-	}
-	if err := waitNumPodsScheduled(b, test.PodsToSchedule.Num, podInformer, testNamespace); err != nil {
-		b.Fatal(err)
-	}
-
-	close(stopCh)
-	// Note: without this line we're taking the overhead of defer() into account.
 	b.StopTimer()
-
-	var dataItems []DataItem
-	for _, collector := range collectors {
-		dataItems = append(dataItems, collector.collect()...)
+	b.ResetTimer()
+	for opCount, op := range w.Ops {
+		switch realOp := op.realOp.(type) {
+		case *createNodesOp:
+			nodePreparer, err := getNodePreparer(fmt.Sprintf("op-%d", opCount), realOp, clientset)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := nodePreparer.PrepareNodes(); err != nil {
+				b.Fatal(err)
+			}
+			defer nodePreparer.CleanupNodes()
+		case *createPodsOp:
+			var namespace string
+			if realOp.Namespace != nil {
+				namespace = *realOp.Namespace
+			} else {
+				namespace = fmt.Sprintf("op-%d", opCount)
+			}
+			var stopCh chan struct{}
+			var collectors []testDataCollector
+			if realOp.CollectMetrics {
+				b.StartTimer()
+				stopCh = make(chan struct{})
+				collectors = getTestDataCollectors(podInformer, fmt.Sprintf("%s/%s", b.Name(), namespace), namespace, tc.MetricsCollectorConfig)
+				for _, collector := range collectors {
+					go collector.run(stopCh)
+				}
+			}
+			if err := createPods(namespace, realOp, clientset); err != nil {
+				b.Fatal(err)
+			}
+			if !realOp.SkipWaitToCompletion {
+				if err := barrierOne(podInformer, b.Name(), namespace, realOp.Count); err != nil {
+					b.Fatal(err)
+				}
+			} else {
+				// Only record those namespaces that may potentially require barriers
+				// in the future.
+				if _, ok := numPodsScheduledPerNamespace[namespace]; ok {
+					numPodsScheduledPerNamespace[namespace] += realOp.Count
+				} else {
+					numPodsScheduledPerNamespace[namespace] = realOp.Count
+				}
+			}
+			if realOp.CollectMetrics {
+				close(stopCh)
+				for _, collector := range collectors {
+					dataItems = append(dataItems, collector.collect()...)
+				}
+				b.StopTimer()
+			}
+		case *barrierOp:
+			if err := barrier(podInformer, b.Name(), realOp.Namespaces, numPodsScheduledPerNamespace); err != nil {
+				b.Fatal(err)
+			}
+			// At the end of the barrier, we can be sure that there are no pods
+			// pending scheduling in the namespaces that we just blocked on.
+			if realOp.Namespaces == nil {
+				numPodsScheduledPerNamespace = make(map[string]int)
+			} else {
+				for _, namespace := range realOp.Namespaces {
+					delete(numPodsScheduledPerNamespace, namespace)
+				}
+			}
+		default:
+			b.Fatalf("invalid op %v", realOp)
+		}
 	}
+	// Any pending pods must be scheduled before this test can be considered to
+	// be complete.
+	if err := barrier(podInformer, b.Name(), nil, numPodsScheduledPerNamespace); err != nil {
+		b.Fatal(err)
+	}
+
 	return dataItems
 }
 
-func waitNumPodsScheduled(b *testing.B, num int, podInformer coreinformers.PodInformer, namespace string) error {
-	for {
-		scheduled, err := getScheduledPods(podInformer, namespace)
-		if err != nil {
-			return err
-		}
-		if len(scheduled) >= num {
-			break
-		}
-		klog.Infof("%s: got %d existing pods, required: %d", b.Name(), len(scheduled), num)
-		time.Sleep(1 * time.Second)
-	}
-	return nil
+type testDataCollector interface {
+	run(stopCh chan struct{})
+	collect() []DataItem
 }
 
-func getTestDataCollectors(tc testCase, podInformer coreinformers.PodInformer, b *testing.B) []testDataCollector {
-	collectors := []testDataCollector{newThroughputCollector(podInformer, map[string]string{"Name": b.Name()}, []string{testNamespace})}
-	metricsCollectorConfig := defaultMetricsCollectorConfig
-	if tc.MetricsCollectorConfig != nil {
-		metricsCollectorConfig = *tc.MetricsCollectorConfig
+func getTestDataCollectors(podInformer coreinformers.PodInformer, name, namespace string, mcc *metricsCollectorConfig) []testDataCollector {
+	if mcc == nil {
+		mcc = &defaultMetricsCollectorConfig
 	}
-	collectors = append(collectors, newMetricsCollector(metricsCollectorConfig, map[string]string{"Name": b.Name()}))
-	return collectors
+	return []testDataCollector{
+		newThroughputCollector(podInformer, map[string]string{"Name": name}, []string{namespace}),
+		newMetricsCollector(mcc, map[string]string{"Name": name}),
+	}
 }
 
-func getNodePreparer(nc nodeCase, clientset clientset.Interface) (testutils.TestNodePreparer, error) {
+func getNodePreparer(prefix string, cno *createNodesOp, clientset clientset.Interface) (testutils.TestNodePreparer, error) {
 	var nodeStrategy testutils.PrepareNodeStrategy = &testutils.TrivialNodePrepareStrategy{}
-	if nc.NodeAllocatableStrategy != nil {
-		nodeStrategy = nc.NodeAllocatableStrategy
-	} else if nc.LabelNodePrepareStrategy != nil {
-		nodeStrategy = nc.LabelNodePrepareStrategy
-	} else if nc.UniqueNodeLabelStrategy != nil {
-		nodeStrategy = nc.UniqueNodeLabelStrategy
+	if cno.NodeAllocatableStrategy != nil {
+		nodeStrategy = cno.NodeAllocatableStrategy
+	} else if cno.LabelNodePrepareStrategy != nil {
+		nodeStrategy = cno.LabelNodePrepareStrategy
+	} else if cno.UniqueNodeLabelStrategy != nil {
+		nodeStrategy = cno.UniqueNodeLabelStrategy
 	}
 
-	if nc.NodeTemplatePath != nil {
-		node, err := getNodeSpecFromFile(nc.NodeTemplatePath)
+	if cno.NodeTemplatePath != nil {
+		node, err := getNodeSpecFromFile(cno.NodeTemplatePath)
 		if err != nil {
 			return nil, err
 		}
 		return framework.NewIntegrationTestNodePreparerWithNodeSpec(
 			clientset,
-			[]testutils.CountToStrategy{{Count: nc.Num, Strategy: nodeStrategy}},
+			[]testutils.CountToStrategy{{Count: cno.Count, Strategy: nodeStrategy}},
 			node,
 		), nil
 	}
 	return framework.NewIntegrationTestNodePreparer(
 		clientset,
-		[]testutils.CountToStrategy{{Count: nc.Num, Strategy: nodeStrategy}},
-		"scheduler-perf-",
+		[]testutils.CountToStrategy{{Count: cno.Count, Strategy: nodeStrategy}},
+		prefix,
 	), nil
 }
 
-func createPods(ns string, pc podCase, clientset clientset.Interface) error {
-	strategy, err := getPodStrategy(pc)
+func createPods(namespace string, cpo *createPodsOp, clientset clientset.Interface) error {
+	strategy, err := getPodStrategy(cpo)
 	if err != nil {
 		return err
 	}
 	config := testutils.NewTestPodCreatorConfig()
-	config.AddStrategy(ns, pc.Num, strategy)
+	config.AddStrategy(namespace, cpo.Count, strategy)
 	podCreator := testutils.NewTestPodCreator(clientset, config)
 	return podCreator.CreatePods()
 }
 
-func getPodStrategy(pc podCase) (testutils.TestPodCreateStrategy, error) {
+// barrierOne blocks until all pods in the given namespace are scheduled.
+func barrierOne(podInformer coreinformers.PodInformer, name string, namespace string, wantCount int) error {
+	for {
+		scheduled, err := getScheduledPods(podInformer, namespace)
+		if err != nil {
+			return err
+		}
+		if len(scheduled) >= wantCount {
+			break
+		}
+		klog.Infof("%s: namespace %s: got %d existing pods, want %d", name, namespace, len(scheduled), wantCount)
+		time.Sleep(1 * time.Second)
+	}
+	return nil
+}
+
+// barrier blocks until the all pods in the given namespaces are scheduled.
+func barrier(podInformer coreinformers.PodInformer, name string, namespaces []string, numPodsScheduledPerNamespace map[string]int) error {
+	// If unspecified, default to all known namespaces.
+	if namespaces == nil {
+		for namespace := range numPodsScheduledPerNamespace {
+			namespaces = append(namespaces, namespace)
+		}
+	}
+
+	for _, namespace := range namespaces {
+		wantCount, ok := numPodsScheduledPerNamespace[namespace]
+		if !ok {
+			return fmt.Errorf("unknown namespace %s", namespace)
+		}
+		if err := barrierOne(podInformer, name, namespace, wantCount); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getSpecFromFile(path *string, spec interface{}) error {
+	bytes, err := ioutil.ReadFile(*path)
+	if err != nil {
+		return err
+	}
+	return yaml.UnmarshalStrict(bytes, spec)
+}
+
+func getTestCases(path string) ([]*testCase, error) {
+	testCases := make([]*testCase, 0)
+	if err := getSpecFromFile(&path, &testCases); err != nil {
+		return nil, fmt.Errorf("parsing test cases: %v", err)
+	}
+	return testCases, nil
+}
+
+func validateTestCases(testCases []*testCase) error {
+	if len(testCases) == 0 {
+		return fmt.Errorf("no test cases defined")
+	}
+	for _, tc := range testCases {
+		if len(tc.Workloads) == 0 {
+			return fmt.Errorf("%s: no workloads defined", tc.Name)
+		}
+		for _, w := range tc.Workloads {
+			if len(w.Ops) == 0 {
+				return fmt.Errorf("%s/%s: no ops defined", tc.Name, w.Name)
+			}
+			// Make sure there's at least one CreatePods with collectMetrics: true in
+			// each workload. Otherwise go-test will run the workloads forever since
+			// each run would seem to finish "instantaneously".
+			if !w.collectsMetrics() {
+				return fmt.Errorf("%s/%s: none of the ops have CollectMetrics set to true", tc.Name, w.Name)
+			}
+		}
+	}
+	return nil
+}
+
+func getPodStrategy(cpo *createPodsOp) (testutils.TestPodCreateStrategy, error) {
 	basePod := makeBasePod()
-	if pc.PodTemplatePath != nil {
+	if cpo.PodTemplatePath != nil {
 		var err error
-		basePod, err = getPodSpecFromFile(pc.PodTemplatePath)
+		basePod, err = getPodSpecFromFile(cpo.PodTemplatePath)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if pc.PersistentVolumeClaimTemplatePath == nil {
+	if cpo.PersistentVolumeClaimTemplatePath == nil {
 		return testutils.NewCustomCreatePodStrategy(basePod), nil
 	}
 
-	pvTemplate, err := getPersistentVolumeSpecFromFile(pc.PersistentVolumeTemplatePath)
+	pvTemplate, err := getPersistentVolumeSpecFromFile(cpo.PersistentVolumeTemplatePath)
 	if err != nil {
 		return nil, err
 	}
-	pvcTemplate, err := getPersistentVolumeClaimSpecFromFile(pc.PersistentVolumeClaimTemplatePath)
+	pvcTemplate, err := getPersistentVolumeClaimSpecFromFile(cpo.PersistentVolumeClaimTemplatePath)
 	if err != nil {
 		return nil, err
 	}
 	return testutils.NewCreatePodWithPersistentVolumeStrategy(pvcTemplate, getCustomVolumeFactory(pvTemplate), basePod), nil
-}
-
-func parseTestCases(path string) ([]testCase, error) {
-	var simpleTests []simpleTestCases
-	if err := getSpecFromFile(&path, &simpleTests); err != nil {
-		return nil, fmt.Errorf("parsing test cases: %v", err)
-	}
-
-	testCases := make([]testCase, 0)
-	for _, s := range simpleTests {
-		testCase := s.Template
-		for _, p := range s.Params {
-			testCase.Nodes.Num = p.NumNodes
-			testCase.InitPods = append([]podCase(nil), testCase.InitPods...)
-			for i, v := range p.NumInitPods {
-				testCase.InitPods[i].Num = v
-			}
-			testCase.PodsToSchedule.Num = p.NumPodsToSchedule
-			testCases = append(testCases, testCase)
-		}
-	}
-
-	return testCases, nil
 }
 
 func getNodeSpecFromFile(path *string) (*v1.Node, error) {
@@ -335,14 +520,6 @@ func getPersistentVolumeClaimSpecFromFile(path *string) (*v1.PersistentVolumeCla
 		return nil, fmt.Errorf("parsing PersistentVolumeClaim: %v", err)
 	}
 	return persistentVolumeClaimSpec, nil
-}
-
-func getSpecFromFile(path *string, spec interface{}) error {
-	bytes, err := ioutil.ReadFile(*path)
-	if err != nil {
-		return err
-	}
-	return yaml.Unmarshal(bytes, spec)
 }
 
 func getCustomVolumeFactory(pvTemplate *v1.PersistentVolume) func(id int) *v1.PersistentVolume {

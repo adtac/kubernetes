@@ -147,11 +147,11 @@ type metricsCollectorConfig struct {
 // metricsCollector collects metrics from legacyregistry.DefaultGatherer.Gather() endpoint.
 // Currently only Histrogram metrics are supported.
 type metricsCollector struct {
-	metricsCollectorConfig
+	*metricsCollectorConfig
 	labels map[string]string
 }
 
-func newMetricsCollector(config metricsCollectorConfig, labels map[string]string) *metricsCollector {
+func newMetricsCollector(config *metricsCollectorConfig, labels map[string]string) *metricsCollector {
 	return &metricsCollector{
 		metricsCollectorConfig: config,
 		labels:                 labels,
