@@ -2,24 +2,18 @@
   workloads:
   - name: 500Nodes
     ops:
-    - op: CreateNodes
-      count: 500
-    - op: CreatePods
-      count: 500
+    - createNodes: 500
+    - createPods: 500
       podTemplatePath: config/pod-default.yaml
-    - op: CreatePods
-      count: 1000
+    - createPods: 100
       podTemplatePath: config/pod-default.yaml
       collectMetrics: true
   - name: 5000Nodes
     ops:
-    - op: CreateNodes
-      count: 5000
-    - op: CreatePods
-      count: 1000
+    - createNodes: 5000
+    - createPods: 1000
       podTemplatePath: config/pod-default.yaml
-    - op: CreatePods
-      count: 1000
+    - createPods: 1000
       podTemplatePath: config/pod-default.yaml
       collectMetrics: true
 
@@ -27,20 +21,8 @@
   workloads:
   - name: SmallWorkload
     ops:
-    - op: CreateNodes
-      count: 5
-    - op: CreatePods
-      count: 5
-      namespace: foo
+    - createNodes: 10
+    - createNodes: 10
+    - createPods: 10
       skipWaitToCompletion: true
-    - op: CreatePods
-      count: 5
-      namespace: bar
-      skipWaitToCompletion: true
-    - op: Barrier
-      namespaces:
-      - foo
-      - bar
-    - op: CreatePods
-      count: 5
       collectMetrics: true

@@ -58,7 +58,7 @@ func NewIntegrationTestNodePreparerWithNodeSpec(client clientset.Interface, coun
 }
 
 // PrepareNodes prepares countToStrategy test nodes.
-func (p *IntegrationTestNodePreparer) PrepareNodes() error {
+func (p *IntegrationTestNodePreparer) PrepareNodes(startIndex int) error {
 	numNodes := 0
 	for _, v := range p.countToStrategy {
 		numNodes += v.Count
@@ -103,8 +103,8 @@ func (p *IntegrationTestNodePreparer) PrepareNodes() error {
 	if err != nil {
 		klog.Fatalf("Error listing nodes: %v", err)
 	}
-	index := 0
-	sum := 0
+	index := startIndex
+	sum := startIndex
 	for _, v := range p.countToStrategy {
 		sum += v.Count
 		for ; index < sum; index++ {

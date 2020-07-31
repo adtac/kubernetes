@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,10 +37,7 @@ import (
 )
 
 const (
-	configFile        = "config/performance-config.yaml"
-	createNodesOpcode = "CreateNodes"
-	createPodsOpcode  = "CreatePods"
-	barrierOpcode     = "Barrier"
+	configFile = "config/performance-config.yaml"
 )
 
 var (
@@ -96,12 +94,13 @@ type op struct {
 }
 
 // UnmarshalJSON is a custom unmarshaler for the op struct since we don't know
-// at runtime which op we're decoding.
+// which op we're decoding at runtime.
 func (op *op) UnmarshalJSON(b []byte) error {
 	possibleOps := []realOp{
 		&createNodesOp{},
 		&createPodsOp{},
 		&barrierOp{},
+		// TODO: add a sleep timer op to simulate user action better?
 	}
 	var firstError error
 	for _, possibleOp := range possibleOps {
@@ -122,19 +121,16 @@ func (op *op) UnmarshalJSON(b []byte) error {
 // realOp is an interface that is implemented by different structs. To evaluate
 // the validity of ops at parse-time, a isValid function must be implemented.
 type realOp interface {
-	// isValid verifies that the validity of the op such as making sure the
-	// opcode matches the expected value.
+	// isValid verifies the validity of the op args such as node/pod count.
 	isValid() error
-	// collectsMetrics checks if the implementing struct collects metrics.
+	// collectsMetrics checks if the op collects metrics.
 	collectsMetrics() bool
 }
 
 // createNodesOp defines an op where nodes are created as a part of a workload.
 type createNodesOp struct {
-	// Must always be "CreateNodes".
-	Op string
 	// Number of nodes to create.
-	Count int
+	CreateNodes int
 	// Path to spec file describing the nodes to create. Optional.
 	NodeTemplatePath *string
 	// At most one of the following strategies can be defined. Optional, defaults
@@ -145,10 +141,7 @@ type createNodesOp struct {
 }
 
 func (cno *createNodesOp) isValid() error {
-	if cno.Op != createNodesOpcode {
-		return fmt.Errorf("opcode does not match: got %s, want %s", cno.Op, createNodesOpcode)
-	}
-	if cno.Count <= 0 {
+	if cno.CreateNodes <= 0 {
 		return fmt.Errorf("number of nodes cannot be non-positive")
 	}
 	return nil
@@ -162,16 +155,14 @@ func (*createNodesOp) collectsMetrics() bool {
 // The test can block on the completion of this op before moving forward or
 // continue asynchronously.
 type createPodsOp struct {
-	// Must always be "SchedulePods".
-	Op string
 	// Number of pods to schedule.
-	Count int
+	CreatePods int
 	// Whether or not to enable metrics collection for this createPodsOp.
 	// Optional. Both CollectMetrics and SkipWaitToCompletion cannot be true at
 	// the same time for a particular createPodsOp.
 	CollectMetrics bool
 	// Namespace the pods should be created in. Optional, defaults to a unique
-	// namespace of the format "op-<number>".
+	// namespace of the format "namespace-<number>".
 	Namespace *string
 	// Path to spec file describing the pods to schedule. Optional.
 	PodTemplatePath *string
@@ -184,14 +175,8 @@ type createPodsOp struct {
 }
 
 func (cpo *createPodsOp) isValid() error {
-	if cpo.Op != createPodsOpcode {
-		return fmt.Errorf("opcode does not match: got %s, want %s", cpo.Op, createPodsOpcode)
-	}
-	if cpo.Count <= 0 {
+	if cpo.CreatePods <= 0 {
 		return fmt.Errorf("number of pods cannot be non-positive")
-	}
-	if cpo.CollectMetrics && cpo.SkipWaitToCompletion {
-		return fmt.Errorf("CollectMetrics and SkipWaitToCompletion cannot both be true at the same time")
 	}
 	return nil
 }
@@ -205,16 +190,11 @@ func (cpo *createPodsOp) collectsMetrics() bool {
 // were scheduled with SkipWaitToCompletion set to true. A barrierOp is added
 // at the end of each each workload automatically.
 type barrierOp struct {
-	// Must always be "Barrier".
-	Op string
 	// Namespaces to block on. Optional, defaults to all namespaces.
-	Namespaces []string
+	Barrier []string
 }
 
 func (bo *barrierOp) isValid() error {
-	if bo.Op != barrierOpcode {
-		return fmt.Errorf("opcode does not match: got %s, want %s", bo.Op, barrierOpcode)
-	}
 	return nil
 }
 
@@ -251,31 +231,41 @@ func BenchmarkPerfScheduling(b *testing.B) {
 }
 
 func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
+	var mu sync.Mutex
 	var dataItems []DataItem
-	numPodsScheduledPerNamespace := make(map[string]int)
-
 	finalFunc, podInformer, clientset := mustSetupScheduler()
 	defer finalFunc()
 
+	numPodsScheduledPerNamespace := make(map[string]int)
+	numNodes := 0
+	allPodsAsync := true
+
 	b.StopTimer()
 	b.ResetTimer()
-	for opCount, op := range w.Ops {
+	for opIndex, op := range w.Ops {
 		switch realOp := op.realOp.(type) {
 		case *createNodesOp:
-			nodePreparer, err := getNodePreparer(fmt.Sprintf("op-%d", opCount), realOp, clientset)
+			nodePreparer, err := getNodePreparer(fmt.Sprintf("node-%d-", opIndex), realOp, clientset)
 			if err != nil {
 				b.Fatal(err)
 			}
-			if err := nodePreparer.PrepareNodes(); err != nil {
+			if err := nodePreparer.PrepareNodes(numNodes); err != nil {
 				b.Fatal(err)
 			}
-			defer nodePreparer.CleanupNodes()
+			if numNodes == 0 {
+				// Schedule a cleanup at most once. The CleanupNodes function will list
+				// and delete *all* nodes.
+				// TODO: make CleanupNodes only clean up its own nodes to make this
+				// more intuitive?
+				defer nodePreparer.CleanupNodes()
+			}
+			numNodes += realOp.CreateNodes
 		case *createPodsOp:
 			var namespace string
 			if realOp.Namespace != nil {
 				namespace = *realOp.Namespace
 			} else {
-				namespace = fmt.Sprintf("op-%d", opCount)
+				namespace = fmt.Sprintf("namespace-%d", opIndex)
 			}
 			var stopCh chan struct{}
 			var collectors []testDataCollector
@@ -290,36 +280,53 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			if err := createPods(namespace, realOp, clientset); err != nil {
 				b.Fatal(err)
 			}
-			if !realOp.SkipWaitToCompletion {
-				if err := barrierOne(podInformer, b.Name(), namespace, realOp.Count); err != nil {
+			finish := func() {
+				if err := barrierOne(podInformer, b.Name(), namespace, realOp.CreatePods); err != nil {
 					b.Fatal(err)
 				}
-			} else {
+				if realOp.CollectMetrics {
+					close(stopCh)
+					mu.Lock()
+					for _, collector := range collectors {
+						dataItems = append(dataItems, collector.collect()...)
+					}
+					mu.Unlock()
+				}
+			}
+			if realOp.SkipWaitToCompletion {
 				// Only record those namespaces that may potentially require barriers
 				// in the future.
 				if _, ok := numPodsScheduledPerNamespace[namespace]; ok {
-					numPodsScheduledPerNamespace[namespace] += realOp.Count
+					numPodsScheduledPerNamespace[namespace] += realOp.CreatePods
 				} else {
-					numPodsScheduledPerNamespace[namespace] = realOp.Count
+					numPodsScheduledPerNamespace[namespace] = realOp.CreatePods
 				}
-			}
-			if realOp.CollectMetrics {
-				close(stopCh)
-				for _, collector := range collectors {
-					dataItems = append(dataItems, collector.collect()...)
-				}
+				go finish()
+				// We can't stop the timer after the pods actually get scheduled
+				// because a different timer may have been started and stopped by then.
+				// AFAIK, there is no way to add the time elapsed to the benchmark's
+				// timer concurrently without using StartTimer and StopTimer.
+				b.StopTimer()
+			} else {
+				allPodsAsync = false
+				finish()
 				b.StopTimer()
 			}
 		case *barrierOp:
-			if err := barrier(podInformer, b.Name(), realOp.Namespaces, numPodsScheduledPerNamespace); err != nil {
+			for _, barrier := range realOp.Barrier {
+				if _, ok := numPodsScheduledPerNamespace[barrier]; !ok {
+					b.Fatalf("unknown namespace %s", barrier)
+				}
+			}
+			if err := barrier(podInformer, b.Name(), realOp.Barrier, numPodsScheduledPerNamespace); err != nil {
 				b.Fatal(err)
 			}
 			// At the end of the barrier, we can be sure that there are no pods
 			// pending scheduling in the namespaces that we just blocked on.
-			if realOp.Namespaces == nil {
+			if len(realOp.Barrier) == 0 {
 				numPodsScheduledPerNamespace = make(map[string]int)
 			} else {
-				for _, namespace := range realOp.Namespaces {
+				for _, namespace := range realOp.Barrier {
 					delete(numPodsScheduledPerNamespace, namespace)
 				}
 			}
@@ -327,10 +334,25 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			b.Fatalf("invalid op %v", realOp)
 		}
 	}
-	// Any pending pods must be scheduled before this test can be considered to
-	// be complete.
+
+	if allPodsAsync {
+		// The go-test timer cannot measure pods being scheduled in the background
+		// (specified through the skipWaitToCompletion option). As a result, if all
+		// pods were scheduled in the background, go-test will think the test
+		// completed nearly instantaneously; to work around this, in such
+		// scenarios, we measure the actual time to completion using the final
+		// barrier. Note that there will always be at least one CreatePods op that
+		// will start and stop the timer, so workloads with at least synchronous
+		// pod creation will not need this workaround.
+		b.StartTimer()
+	}
 	if err := barrier(podInformer, b.Name(), nil, numPodsScheduledPerNamespace); err != nil {
+		// Any pending pods must be scheduled before this test can be considered to
+		// be complete.
 		b.Fatal(err)
+	}
+	if allPodsAsync {
+		b.StopTimer()
 	}
 
 	return dataItems
@@ -368,13 +390,13 @@ func getNodePreparer(prefix string, cno *createNodesOp, clientset clientset.Inte
 		}
 		return framework.NewIntegrationTestNodePreparerWithNodeSpec(
 			clientset,
-			[]testutils.CountToStrategy{{Count: cno.Count, Strategy: nodeStrategy}},
+			[]testutils.CountToStrategy{{Count: cno.CreateNodes, Strategy: nodeStrategy}},
 			node,
 		), nil
 	}
 	return framework.NewIntegrationTestNodePreparer(
 		clientset,
-		[]testutils.CountToStrategy{{Count: cno.Count, Strategy: nodeStrategy}},
+		[]testutils.CountToStrategy{{Count: cno.CreateNodes, Strategy: nodeStrategy}},
 		prefix,
 	), nil
 }
@@ -385,7 +407,7 @@ func createPods(namespace string, cpo *createPodsOp, clientset clientset.Interfa
 		return err
 	}
 	config := testutils.NewTestPodCreatorConfig()
-	config.AddStrategy(namespace, cpo.Count, strategy)
+	config.AddStrategy(namespace, cpo.CreatePods, strategy)
 	podCreator := testutils.NewTestPodCreator(clientset, config)
 	return podCreator.CreatePods()
 }
@@ -398,12 +420,11 @@ func barrierOne(podInformer coreinformers.PodInformer, name string, namespace st
 			return err
 		}
 		if len(scheduled) >= wantCount {
-			break
+			return nil
 		}
 		klog.Infof("%s: namespace %s: got %d existing pods, want %d", name, namespace, len(scheduled), wantCount)
 		time.Sleep(1 * time.Second)
 	}
-	return nil
 }
 
 // barrier blocks until the all pods in the given namespaces are scheduled.
@@ -455,11 +476,11 @@ func validateTestCases(testCases []*testCase) error {
 			if len(w.Ops) == 0 {
 				return fmt.Errorf("%s/%s: no ops defined", tc.Name, w.Name)
 			}
-			// Make sure there's at least one CreatePods with collectMetrics: true in
-			// each workload. Otherwise go-test will run the workloads forever since
-			// each run would seem to finish "instantaneously".
+			// Make sure there's at least one CreatePods op with collectMetrics set
+			// to true in each workload. What's the point of running a performance
+			// benchmark if no statistics are collected for reporting?
 			if !w.collectsMetrics() {
-				return fmt.Errorf("%s/%s: none of the ops have CollectMetrics set to true", tc.Name, w.Name)
+				return fmt.Errorf("%s/%s: none of the ops collect metrics", tc.Name, w.Name)
 			}
 		}
 	}
