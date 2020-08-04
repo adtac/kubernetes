@@ -5,7 +5,7 @@
     - createNodes: 500
     - createPods: 500
       podTemplatePath: config/pod-default.yaml
-    - createPods: 100
+    - createPods: 1000
       podTemplatePath: config/pod-default.yaml
       collectMetrics: true
   - name: 5000Nodes
@@ -17,12 +17,29 @@
       podTemplatePath: config/pod-default.yaml
       collectMetrics: true
 
-- name: SchedulingFooBar
+- name: SchedulingPodAntiAffinity
   workloads:
-  - name: SmallWorkload
+  - name: 500Nodes
     ops:
-    - createNodes: 10
-    - createNodes: 10
-    - createPods: 10
-      skipWaitToCompletion: true
+    - createNodes: 500
+      uniqueNodeLabelStrategy:
+        labelKey: kubernetes.io/hostname
+    - createPods: 100
+      podTemplatePath: config/pod-with-pod-anti-affinity.yaml
+      namespace: sched-setup
+    - createPods: 400
+      podTemplatePath: config/pod-with-pod-anti-affinity.yaml
       collectMetrics: true
+      namespace: sched-test
+  - name: 5000Nodes
+    ops:
+    - createNodes: 5000
+      uniqueNodeLabelStrategy:
+        labelKey: kubernetes.io/hostname
+    - createPods: 1000
+      podTemplatePath: config/pod-with-pod-anti-affinity.yaml
+      namespace: sched-setup
+    - createPods: 1000
+      podTemplatePath: config/pod-with-pod-anti-affinity.yaml
+      collectMetrics: true
+      namespace: sched-test

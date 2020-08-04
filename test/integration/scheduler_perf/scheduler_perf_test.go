@@ -260,6 +260,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 				defer nodePreparer.CleanupNodes()
 			}
 			numNodes += realOp.CreateNodes
+
 		case *createPodsOp:
 			var namespace string
 			if realOp.Namespace != nil {
@@ -312,6 +313,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 				finish()
 				b.StopTimer()
 			}
+
 		case *barrierOp:
 			for _, barrier := range realOp.Barrier {
 				if _, ok := numPodsScheduledPerNamespace[barrier]; !ok {
@@ -420,11 +422,12 @@ func barrierOne(podInformer coreinformers.PodInformer, name string, namespace st
 			return err
 		}
 		if len(scheduled) >= wantCount {
-			return nil
+			break
 		}
 		klog.Infof("%s: namespace %s: got %d existing pods, want %d", name, namespace, len(scheduled), wantCount)
 		time.Sleep(1 * time.Second)
 	}
+	return nil
 }
 
 // barrier blocks until the all pods in the given namespaces are scheduled.
@@ -482,6 +485,9 @@ func validateTestCases(testCases []*testCase) error {
 			if !w.collectsMetrics() {
 				return fmt.Errorf("%s/%s: none of the ops collect metrics", tc.Name, w.Name)
 			}
+
+			// TODO(adtac): make sure each workload within a test case has a unique
+			// name. The name is used to identify the stats in benchmark reports.
 		}
 	}
 	return nil
