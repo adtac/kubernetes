@@ -193,11 +193,16 @@ func (cpo *createPodsOp) collectsMetrics() bool {
 // were scheduled with SkipWaitToCompletion set to true. A barrierOp is added
 // at the end of each each workload automatically.
 type barrierOp struct {
-	// Namespaces to block on. Optional, defaults to all namespaces.
+	// Namespaces to block on. Required. Empty array signifies that the barrier
+	// should block on all namespaces.
 	Barrier []string
 }
 
 func (bo *barrierOp) isValid() error {
+	if bo.Barrier == nil {
+		// nil isn't the same as an empty array.
+		return fmt.Errorf("barrier not set")
+	}
 	return nil
 }
 
