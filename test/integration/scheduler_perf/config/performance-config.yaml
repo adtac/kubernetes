@@ -197,3 +197,30 @@
       podTemplatePath: config/pod-with-pod-affinity.yaml
       namespace: sched-test
       collectMetrics: true
+
+- name: SchedulingPreferredPodAffinity
+  workloads:
+  - name: 500Nodes
+    ops:
+    - createNodes: 500
+      uniqueNodeLabelStrategy:
+        labelKey: kubernetes.io/hostname
+    - createPods: 500
+      podTemplatePath: config/pod-with-preferred-pod-affinity.yaml
+      namespace: sched-setup
+    - createPods: 1000
+      podTemplatePath: config/pod-with-preferred-pod-affinity.yaml
+      namespace: sched-test
+      collectMetrics: true
+  - name: 5000Nodes
+    ops:
+    - createNodes: 5000
+      uniqueNodeLabelStrategy:
+        labelKey: kubernetes.io/hostname
+    - createPods: 5000
+      podTemplatePath: config/pod-with-preferred-pod-affinity.yaml
+      namespace: sched-setup
+    - createPods: 1000
+      podTemplatePath: config/pod-with-preferred-pod-affinity.yaml
+      namespace: sched-test
+      collectMetrics: true
