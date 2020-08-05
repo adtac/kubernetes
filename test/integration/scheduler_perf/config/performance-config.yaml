@@ -332,3 +332,56 @@
     - createPods: 2000
       podTemplatePath: config/pod-with-preferred-topology-spreading.yaml
       collectMetrics: true
+
+- name: MixedSchedulingBasePod
+  workloads:
+  - name: 500Nodes
+    ops:
+    - createNodes: 500
+      nodeTemplatePath: config/node-default.yaml
+      labelNodePrepareStrategy:
+        labelKey: "topology.kubernetes.io/zone"
+        labelValues: ["zone1"]
+    - createPods: 200
+      podTemplatePath: config/pod-default.yaml
+      namespace: sched-setup
+    - createPods: 200
+      podTemplatePath: config/pod-with-pod-affinity.yaml
+      namespace: sched-setup
+    - createPods: 200
+      podTemplatePath: config/pod-with-pod-anti-affinity.yaml
+      namespace: sched-setup
+    - createPods: 200
+      podTemplatePath: config/pod-with-preferred-pod-affinity.yaml
+      namespace: sched-setup
+    - createPods: 200
+      podTemplatePath: config/pod-with-preferred-pod-anti-affinity.yaml
+      namespace: sched-setup
+    - createPods: 1000
+      podTemplatePath: config/pod-default.yaml
+      collectMetrics: true
+  - name: 5000Nodes
+    ops:
+    - createNodes: 5000
+      nodeTemplatePath: config/node-default.yaml
+      labelNodePrepareStrategy:
+        labelKey: "topology.kubernetes.io/zone"
+        labelValues: ["zone1"]
+    - createPods: 2000
+      podTemplatePath: config/pod-default.yaml
+      namespace: sched-setup
+    - createPods: 2000
+      podTemplatePath: config/pod-with-pod-affinity.yaml
+      namespace: sched-setup
+    - createPods: 2000
+      podTemplatePath: config/pod-with-pod-anti-affinity.yaml
+      namespace: sched-setup
+    - createPods: 2000
+      podTemplatePath: config/pod-with-preferred-pod-affinity.yaml
+      namespace: sched-setup
+    - createPods: 2000
+      podTemplatePath: config/pod-with-preferred-pod-anti-affinity.yaml
+      namespace: sched-setup
+    - createPods: 1000
+      podTemplatePath: config/pod-default.yaml
+      collectMetrics: true
