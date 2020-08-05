@@ -43,3 +43,22 @@
       podTemplatePath: config/pod-with-pod-anti-affinity.yaml
       collectMetrics: true
       namespace: sched-test
+
+- name: SchedulingSecrets
+  workloads:
+  - name: 500Nodes
+    ops:
+      - createNodes: 500
+      - createPods: 500
+        podTemplatePath: config/pod-with-secret-volume.yaml
+      - createPods: 1000
+        podTemplatePath: config/pod-with-secret-volume.yaml
+        collectMetrics: true
+  - name: 5000Nodes
+    ops:
+      - createNodes: 5000
+      - createPods: 5000
+        podTemplatePath: config/pod-with-secret-volume.yaml
+      - createPods: 1000
+        podTemplatePath: config/pod-with-secret-volume.yaml
+        collectMetrics: true
