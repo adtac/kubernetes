@@ -278,3 +278,57 @@
     - createPods: 1000
       podTemplatePath: config/pod-with-node-affinity.yaml
       collectMetrics: true
+
+- name: TopologySpreading
+  workloads:
+  - name: 500Nodes
+    ops:
+    - createNodes: 500
+      nodeTemplatePath: config/node-default.yaml
+      labelNodePrepareStrategy:
+        labelKey: "topology.kubernetes.io/zone"
+        labelValues: ["moon-1", "moon-2", "moon-3"]
+    - createPods: 500
+      podTemplatePath: config/pod-with-topology-spreading.yaml
+    - createPods: 1000
+      podTemplatePath: config/pod-with-topology-spreading.yaml
+      collectMetrics: true
+  - name: 5000Nodes
+    ops:
+    - createNodes: 5000
+      nodeTemplatePath: config/node-default.yaml
+      labelNodePrepareStrategy:
+        labelKey: "topology.kubernetes.io/zone"
+        labelValues: ["moon-1", "moon-2", "moon-3"]
+    - createPods: 5000
+      podTemplatePath: config/pod-with-topology-spreading.yaml
+    - createPods: 2000
+      podTemplatePath: config/pod-with-topology-spreading.yaml
+      collectMetrics: true
+
+- name: PreferredTopologySpreading
+  workloads:
+  - name: 500Nodes
+    ops:
+    - createNodes: 500
+      nodeTemplatePath: config/node-default.yaml
+      labelNodePrepareStrategy:
+        labelKey: "topology.kubernetes.io/zone"
+        labelValues: ["moon-1", "moon-2", "moon-3"]
+    - createPods: 500
+      podTemplatePath: config/pod-with-preferred-topology-spreading.yaml
+    - createPods: 1000
+      podTemplatePath: config/pod-with-preferred-topology-spreading.yaml
+      collectMetrics: true
+  - name: 5000Nodes
+    ops:
+    - createNodes: 5000
+      nodeTemplatePath: config/node-default.yaml
+      labelNodePrepareStrategy:
+        labelKey: "topology.kubernetes.io/zone"
+        labelValues: ["moon-1", "moon-2", "moon-3"]
+    - createPods: 5000
+      podTemplatePath: config/pod-with-preferred-topology-spreading.yaml
+    - createPods: 2000
+      podTemplatePath: config/pod-with-preferred-topology-spreading.yaml
+      collectMetrics: true
