@@ -129,3 +129,40 @@
       persistentVolumeTemplatePath: config/pv-aws.yaml
       persistentVolumeClaimTemplatePath: config/pvc.yaml
       collectMetrics: true
+
+- name: SchedulingCSIPVs
+  workloads:
+  - name: 500Nodes
+    ops:
+    - createNodes: 500
+      nodeTemplatePath: config/node-default.yaml
+      nodeAllocatableStrategy:
+        nodeAllocatable:
+          attachable-volumes-csi-ebs.csi.aws.com: "39"
+        csiNodeAllocatable:
+          ebs.csi.aws.com:
+            count: 39
+    - createPods: 500
+      persistentVolumeTemplatePath: config/pv-csi.yaml
+      persistentVolumeClaimTemplatePath: config/pvc.yaml
+    - createPods: 1000
+      persistentVolumeTemplatePath: config/pv-csi.yaml
+      persistentVolumeClaimTemplatePath: config/pvc.yaml
+      collectMetrics: true
+  - name: 5000Nodes
+    ops:
+    - createNodes: 5000
+      nodeTemplatePath: config/node-default.yaml
+      nodeAllocatableStrategy:
+        nodeAllocatable:
+          attachable-volumes-csi-ebs.csi.aws.com: "39"
+        csiNodeAllocatable:
+          ebs.csi.aws.com:
+            count: 39
+    - createPods: 5000
+      persistentVolumeTemplatePath: config/pv-csi.yaml
+      persistentVolumeClaimTemplatePath: config/pvc.yaml
+    - createPods: 1000
+      persistentVolumeTemplatePath: config/pv-csi.yaml
+      persistentVolumeClaimTemplatePath: config/pvc.yaml
+      collectMetrics: true
