@@ -66,6 +66,9 @@ type testCase struct {
 	MetricsCollectorConfig *metricsCollectorConfig
 	// List of workloads to run under this testCase.
 	Workloads []*workload
+	// TODO(adtac): reduce config toil by having a default pod and node spec per
+	// testCase? CreatePods and CreateNodes ops will inherit these unless
+	// manually overridden.
 }
 
 // workload is a subtest under a testCase that tests the scheduler performance
@@ -100,7 +103,7 @@ func (op *op) UnmarshalJSON(b []byte) error {
 		&createNodesOp{},
 		&createPodsOp{},
 		&barrierOp{},
-		// TODO: add a sleep timer op to simulate user action better?
+		// TODO(adtac): add a sleep timer op to simulate user action?
 	}
 	var firstError error
 	for _, possibleOp := range possibleOps {
@@ -255,8 +258,8 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			if numNodes == 0 {
 				// Schedule a cleanup at most once. The CleanupNodes function will list
 				// and delete *all* nodes.
-				// TODO: make CleanupNodes only clean up its own nodes to make this
-				// more intuitive?
+				// TODO(adtac): make CleanupNodes only clean up its own nodes to make
+				// this more intuitive?
 				defer nodePreparer.CleanupNodes()
 			}
 			numNodes += realOp.CreateNodes
@@ -485,9 +488,8 @@ func validateTestCases(testCases []*testCase) error {
 			if !w.collectsMetrics() {
 				return fmt.Errorf("%s/%s: none of the ops collect metrics", tc.Name, w.Name)
 			}
-
 			// TODO(adtac): make sure each workload within a test case has a unique
-			// name. The name is used to identify the stats in benchmark reports.
+			// name? The name is used to identify the stats in benchmark reports.
 		}
 	}
 	return nil

@@ -48,17 +48,40 @@
   workloads:
   - name: 500Nodes
     ops:
-      - createNodes: 500
-      - createPods: 500
-        podTemplatePath: config/pod-with-secret-volume.yaml
-      - createPods: 1000
-        podTemplatePath: config/pod-with-secret-volume.yaml
-        collectMetrics: true
+    - createNodes: 500
+    - createPods: 500
+      podTemplatePath: config/pod-with-secret-volume.yaml
+    - createPods: 1000
+      podTemplatePath: config/pod-with-secret-volume.yaml
+      collectMetrics: true
   - name: 5000Nodes
     ops:
-      - createNodes: 5000
-      - createPods: 5000
-        podTemplatePath: config/pod-with-secret-volume.yaml
-      - createPods: 1000
-        podTemplatePath: config/pod-with-secret-volume.yaml
-        collectMetrics: true
+    - createNodes: 5000
+    - createPods: 5000
+      podTemplatePath: config/pod-with-secret-volume.yaml
+    - createPods: 1000
+      podTemplatePath: config/pod-with-secret-volume.yaml
+      collectMetrics: true
+
+- name: SchedulingInTreePVs
+  workloads:
+  - name: 500Nodes
+    ops:
+    - createNodes: 500
+    - createPods: 500
+      persistentVolumeTemplatePath: config/pv-aws.yaml
+      persistentVolumeClaimTemplatePath: config/pvc.yaml
+    - createPods: 1000
+      persistentVolumeTemplatePath: config/pv-aws.yaml
+      persistentVolumeClaimTemplatePath: config/pvc.yaml
+      collectMetrics: true
+  - name: 5000Nodes
+    ops:
+    - createNodes: 5000
+    - createPods: 5000
+      persistentVolumeTemplatePath: config/pv-aws.yaml
+      persistentVolumeClaimTemplatePath: config/pvc.yaml
+    - createPods: 1000
+      persistentVolumeTemplatePath: config/pv-aws.yaml
+      persistentVolumeClaimTemplatePath: config/pvc.yaml
+      collectMetrics: true
