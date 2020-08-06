@@ -385,3 +385,52 @@
     - createPods: 1000
       podTemplatePath: config/pod-default.yaml
       collectMetrics: true
+
+- name: Preemption
+  workloads:
+  - name: 500Nodes
+    ops:
+    - createNodes: 500
+    - createPods: 2000
+      podTemplatePath: config/pod-low-priority.yaml
+    - createPods: 500
+      podTemplatePath: config/pod-high-priority.yaml
+      collectMetrics: true
+  - name: 5000Nodes
+    ops:
+    - createNodes: 5000
+    - createPods: 20000
+      podTemplatePath: config/pod-low-priority.yaml
+    - createPods: 5000
+      podTemplatePath: config/pod-high-priority.yaml
+      collectMetrics: true
+
+- name: Unschedulable
+  workloads:
+  - name: 500Nodes
+    ops:
+    - createNodes: 500
+    - createPods: 200
+      podTemplatePath: config/pod-large-cpu.yaml
+      skipWaitToCompletion: true
+    - createPods: 1000
+      podTemplatePath: config/pod-default.yaml
+      collectMetrics: true
+  - name: 5000Nodes/200InitPods
+    ops:
+    - createNodes: 5000
+    - createPods: 200
+      podTemplatePath: config/pod-large-cpu.yaml
+      skipWaitToCompletion: true
+    - createPods: 5000
+      podTemplatePath: config/pod-default.yaml
+      collectMetrics: true
+  - name: 5000Nodes/200InitPods
+    ops:
+    - createNodes: 5000
+    - createPods: 2000
+      podTemplatePath: config/pod-large-cpu.yaml
+      skipWaitToCompletion: true
+    - createPods: 5000
+      podTemplatePath: config/pod-default.yaml
+      collectMetrics: true
