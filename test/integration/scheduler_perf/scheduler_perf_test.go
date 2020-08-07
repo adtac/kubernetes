@@ -66,7 +66,7 @@ type testCase struct {
 	MetricsCollectorConfig *metricsCollectorConfig
 	// List of workloads to run under this testCase.
 	Workloads []*workload
-	// TODO(adtac): reduce config toil by having a default pod and node spec per
+	// TODO(#93792): reduce config toil by having a default pod and node spec per
 	// testCase? CreatePods and CreateNodes ops will inherit these unless
 	// manually overridden.
 }
@@ -103,7 +103,7 @@ func (op *op) UnmarshalJSON(b []byte) error {
 		&createNodesOp{},
 		&createPodsOp{},
 		&barrierOp{},
-		// TODO(adtac): add a sleep timer op to simulate user action?
+		// TODO(#93793): add a sleep timer op to simulate user action?
 	}
 	var firstError error
 	for _, possibleOp := range possibleOps {
@@ -246,9 +246,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 
 	numPodsScheduledPerNamespace := make(map[string]int)
 	numNodes := 0
-	allPodsAsync := true
 
-	b.StopTimer()
 	b.ResetTimer()
 	for opIndex, op := range w.Ops {
 		switch realOp := op.realOp.(type) {
@@ -263,7 +261,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			if numNodes == 0 {
 				// Schedule a cleanup at most once. The CleanupNodes function will list
 				// and delete *all* nodes.
-				// TODO(adtac): make CleanupNodes only clean up its own nodes to make
+				// TODO(#93794): make CleanupNodes only clean up its own nodes to make
 				// this more intuitive?
 				defer nodePreparer.CleanupNodes()
 			}
@@ -317,7 +315,6 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 				// timer concurrently without using StartTimer and StopTimer.
 				b.StopTimer()
 			} else {
-				allPodsAsync = false
 				finish()
 				b.StopTimer()
 			}
@@ -344,26 +341,12 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			b.Fatalf("invalid op %v", realOp)
 		}
 	}
-
-	if allPodsAsync {
-		// The go-test timer cannot measure pods being scheduled in the background
-		// (specified through the skipWaitToCompletion option). As a result, if all
-		// pods were scheduled in the background, go-test will think the test
-		// completed nearly instantaneously; to work around this, in such
-		// scenarios, we measure the actual time to completion using the final
-		// barrier. Note that there will always be at least one CreatePods op that
-		// will start and stop the timer, so workloads with at least synchronous
-		// pod creation will not need this workaround.
-		b.StartTimer()
-	}
 	if err := barrier(podInformer, b.Name(), nil, numPodsScheduledPerNamespace); err != nil {
 		// Any pending pods must be scheduled before this test can be considered to
 		// be complete.
 		b.Fatal(err)
 	}
-	if allPodsAsync {
-		b.StopTimer()
-	}
+	b.StopTimer()
 
 	return dataItems
 }
@@ -493,7 +476,7 @@ func validateTestCases(testCases []*testCase) error {
 			if !w.collectsMetrics() {
 				return fmt.Errorf("%s/%s: none of the ops collect metrics", tc.Name, w.Name)
 			}
-			// TODO(adtac): make sure each workload within a test case has a unique
+			// TODO(#93795): make sure each workload within a test case has a unique
 			// name? The name is used to identify the stats in benchmark reports.
 		}
 	}
