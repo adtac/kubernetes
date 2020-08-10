@@ -277,7 +277,6 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			var stopCh chan struct{}
 			var collectors []testDataCollector
 			if realOp.CollectMetrics {
-				b.StartTimer()
 				stopCh = make(chan struct{})
 				collectors = getTestDataCollectors(podInformer, fmt.Sprintf("%s/%s", b.Name(), namespace), namespace, tc.MetricsCollectorConfig)
 				for _, collector := range collectors {
@@ -287,7 +286,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			if err := createPods(namespace, realOp, clientset); err != nil {
 				b.Fatal(err)
 			}
-			finish := func() {
+			barrierAndCollect := func() {
 				if err := barrierOne(podInformer, b.Name(), namespace, realOp.CreatePods); err != nil {
 					b.Fatal(err)
 				}
@@ -308,15 +307,9 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 				} else {
 					numPodsScheduledPerNamespace[namespace] = realOp.CreatePods
 				}
-				go finish()
-				// We can't stop the timer after the pods actually get scheduled
-				// because a different timer may have been started and stopped by then.
-				// AFAIK, there is no way to add the time elapsed to the benchmark's
-				// timer concurrently without using StartTimer and StopTimer.
-				b.StopTimer()
+				go barrierAndCollect()
 			} else {
-				finish()
-				b.StopTimer()
+				barrierAndCollect()
 			}
 
 		case *barrierOp:
