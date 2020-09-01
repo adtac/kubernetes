@@ -220,3 +220,51 @@
       initNodes: 5000
       initPods: 5000
       measurePods: 1000
+
+- name: SchedulingNodeAffinity
+  workloadTemplate:
+  - createNodes: $initNodes
+    nodeTemplatePath: config/node-default.yaml
+    labelNodePrepareStrategy:
+      labelKey: "failure-domain.beta.kubernetes.io/zone"
+      labelValues: ["zone1"]
+  - createPods: $initPods
+    podTemplatePath: config/pod-with-node-affinity.yaml
+  - createPods: $measurePods
+    podTemplatePath: config/pod-with-node-affinity.yaml
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes
+    params:
+      initNodes: 500
+      initPods: 500
+      measurePods: 1000
+  - name: 5000Nodes
+    params:
+      initNodes: 5000
+      initPods: 5000
+      measurePods: 1000
+
+- name: TopologySpreading
+  workloadTemplate:
+  - createNodes: $initNodes
+    nodeTemplatePath: config/node-default.yaml
+    labelNodePrepareStrategy:
+      labelKey: "topology.kubernetes.io/zone"
+      labelValues: ["moon-1", "moon-2", "moon-3"]
+  - createPods: $initPods
+    podTemplatePath: config/pod-default.yaml
+  - createPods: $measurePods
+    podTemplatePath: config/pod-with-topology-spreading.yaml
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes
+    params:
+      initNodes: 500
+      initPods: 1000
+      measurePods: 1000
+  - name: 5000Nodes
+    params:
+      initNodes: 5000
+      initPods: 5000
+      measurePods: 2000
