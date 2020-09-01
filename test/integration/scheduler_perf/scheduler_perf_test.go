@@ -539,6 +539,7 @@ func validateTestCases(testCases []*testCase) error {
 		}
 		// TODO(#93795): make sure each workload within a test case has a unique
 		// name? The name is used to identify the stats in benchmark reports.
+		// TODO(#94404): check for unused template parameters? Probably a typo.
 	}
 	return nil
 }

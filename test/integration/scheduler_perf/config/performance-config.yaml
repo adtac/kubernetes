@@ -83,3 +83,37 @@
       initNodes: 5000
       initPods: 5000
       measurePods: 1000
+
+- name: SchedulingMigratedInTreePVs
+  featureGates:
+    CSIMigration: true
+    CSIMigrationAWS: true
+  workloadTemplate:
+  - createNodes: $initNodes
+    nodeTemplatePath: config/node-default.yaml
+    nodeAllocatableStrategy:
+      nodeAllocatable:
+        attachable-volumes-csi-ebs.csi.aws.com: "39"
+      csiNodeAllocatable:
+        ebs.csi.aws.com:
+          count: 39
+      migratedPlugins:
+      - "kubernetes.io/aws-ebs"
+  - createPods: $initPods
+    persistentVolumeTemplatePath: config/pv-aws.yaml
+    persistentVolumeClaimTemplatePath: config/pvc.yaml
+  - createPods: $measurePods
+    persistentVolumeTemplatePath: config/pv-aws.yaml
+    persistentVolumeClaimTemplatePath: config/pvc.yaml
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes
+    params:
+      initNodes: 500
+      initPods: 500
+      measurePods: 1000
+  - name: 5000Nodes
+    params:
+      initNodes: 5000
+      initPods: 5000
+      measurePods: 1000
