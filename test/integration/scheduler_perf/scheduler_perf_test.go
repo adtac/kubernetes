@@ -225,8 +225,7 @@ func BenchmarkPerfScheduling(b *testing.B) {
 			for _, w := range tc.Workloads {
 				b.Run(w.Name, func(b *testing.B) {
 					for feature, flag := range tc.FeatureGates {
-						resetFunc := featuregatetesting.SetFeatureGateDuringTest(b, utilfeature.DefaultFeatureGate, feature, flag)
-						defer resetFunc()
+						defer featuregatetesting.SetFeatureGateDuringTest(b, utilfeature.DefaultFeatureGate, feature, flag)()
 					}
 					dataItems.DataItems = append(dataItems.DataItems, runWorkload(b, tc, w)...)
 				})
