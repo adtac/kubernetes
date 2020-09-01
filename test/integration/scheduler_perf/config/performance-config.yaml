@@ -349,3 +349,29 @@
       initNodes: 5000
       initPods: 20000
       measurePods: 5000
+
+- name: Unschedulable
+  workloadTemplate:
+  - createNodes: $initNodes
+  - createPods: $initPods
+    podTemplatePath: config/pod-large-cpu.yaml
+    skipWaitToCompletion: true
+  - createPods: $measurePods
+    podTemplatePath: config/pod-default.yaml
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes/200InitPods
+    params:
+      initNodes: 500
+      initPods: 200
+      measurePods: 1000
+  - name: 5000Nodes/200InitPods
+    params:
+      initNodes: 5000
+      initPods: 200
+      measurePods: 5000
+  - name: 5000Nodes/2000InitPods
+    params:
+      initNodes: 5000
+      initPods: 2000
+      measurePods: 5000
