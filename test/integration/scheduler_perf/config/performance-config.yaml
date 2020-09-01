@@ -117,3 +117,82 @@
       initNodes: 5000
       initPods: 5000
       measurePods: 1000
+
+- name: SchedulingCSIPVs
+  workloadTemplate:
+  - createNodes: $initNodes
+    nodeTemplatePath: config/node-default.yaml
+    nodeAllocatableStrategy:
+      nodeAllocatable:
+        attachable-volumes-csi-ebs.csi.aws.com: "39"
+      csiNodeAllocatable:
+        ebs.csi.aws.com:
+          count: 39
+  - createPods: $initPods
+    persistentVolumeTemplatePath: config/pv-csi.yaml
+    persistentVolumeClaimTemplatePath: config/pvc.yaml
+  - createPods: $measurePods
+    persistentVolumeTemplatePath: config/pv-csi.yaml
+    persistentVolumeClaimTemplatePath: config/pvc.yaml
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes
+    params:
+      initNodes: 500
+      initPods: 500
+      measurePods: 1000
+  - name: 5000Nodes
+    params:
+      initNodes: 5000
+      initPods: 5000
+      measurePods: 1000
+
+- name: SchedulingPodAffinity
+  workloadTemplate:
+  - createNodes: $initNodes
+    nodeTemplatePath: config/node-default.yaml
+    labelNodePrepareStrategy:
+      labelKey: "failure-domain.beta.kubernetes.io/zone"
+      labelValues: ["zone1"]
+  - createPods: $initPods
+    podTemplatePath: config/pod-with-pod-affinity.yaml
+    namespace: sched-setup
+  - createPods: $measurePods
+    podTemplatePath: config/pod-with-pod-affinity.yaml
+    namespace: sched-test
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes
+    params:
+      initNodes: 500
+      initPods: 500
+      measurePods: 1000
+  - name: 5000Nodes
+    params:
+      initNodes: 5000
+      initPods: 5000
+      measurePods: 1000
+
+- name: SchedulingPreferredPodAffinity
+  workloadTemplate:
+  - createNodes: $initNodes
+    uniqueNodeLabelStrategy:
+      labelKey: kubernetes.io/hostname
+  - createPods: $initPods
+    podTemplatePath: config/pod-with-preferred-pod-affinity.yaml
+    namespace: sched-setup
+  - createPods: $measurePods
+    podTemplatePath: config/pod-with-preferred-pod-affinity.yaml
+    namespace: sched-test
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes
+    params:
+      initNodes: 500
+      initPods: 500
+      measurePods: 1000
+  - name: 5000Nodes
+    params:
+      initNodes: 5000
+      initPods: 5000
+      measurePods: 1000
