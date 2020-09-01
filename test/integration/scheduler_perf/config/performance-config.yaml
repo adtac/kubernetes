@@ -329,3 +329,23 @@
       initNodes: 5000
       initPods: 2000
       measurePods: 1000
+
+- name: Preemption
+  workloadTemplate:
+  - createNodes: $initNodes
+  - createPods: $initPods
+    podTemplatePath: config/pod-low-priority.yaml
+  - createPods: $measurePods
+    podTemplatePath: config/pod-high-priority.yaml
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes
+    params:
+      initNodes: 500
+      initPods: 2000
+      measurePods: 500
+  - name: 5000Nodes
+    params:
+      initNodes: 5000
+      initPods: 20000
+      measurePods: 5000
