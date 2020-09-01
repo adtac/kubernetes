@@ -17,3 +17,27 @@
       initialNodes: 5000
       initialPods: 1000
       measurePods: 1000
+
+- name: SchedulingPodAntiAffinity
+  workloadTemplate:
+  - createNodes: $initialNodes
+    uniqueNodeLabelStrategy:
+      labelKey: kubernetes.io/hostname
+  - createPods: $initialPods
+    podTemplatePath: config/pod-with-pod-anti-affinity.yaml
+    namespace: sched-setup
+  - createPods: $measurePods
+    podTemplatePath: config/pod-with-pod-anti-affinity.yaml
+    collectMetrics: true
+    namespace: sched-test
+  workloads:
+  - name: 500Nodes
+    params:
+      initialNodes: 500
+      initialPods: 100
+      measurePods: 400
+  - name: 5000Nodes
+    params:
+      initialNodes: 500
+      initialPods: 100
+      measurePods: 400
