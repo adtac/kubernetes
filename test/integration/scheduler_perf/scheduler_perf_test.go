@@ -160,11 +160,15 @@ type createNodesOp struct {
 }
 
 func (cno *createNodesOp) isValid(allowParameterizable bool) error {
-	switch cn := cno.CreateNodes.(type) {
-	case float64:
+	if cn, ok := cno.CreateNodes.(float64); ok {
+		// Unfortunately, the YAML parser may parse numerical values into
+		// interface{} as a int or a float64 in a seemingly arbitrary fashion.
 		cno.CreateNodes = int(cn)
+	}
+	switch cn := cno.CreateNodes.(type) {
+	case int:
 		if cn <= 0 {
-			return fmt.Errorf("CreateNodes=%d is non-positive", int(cn))
+			return fmt.Errorf("CreateNodes=%d is non-positive", cn)
 		}
 	case string:
 		if !allowParameterizable || !isValidParameterizable(cn) {
@@ -214,11 +218,13 @@ type createPodsOp struct {
 }
 
 func (cpo *createPodsOp) isValid(allowParameterizable bool) error {
-	switch cp := cpo.CreatePods.(type) {
-	case float64:
+	if cp, ok := cpo.CreatePods.(float64); ok {
 		cpo.CreatePods = int(cp)
+	}
+	switch cp := cpo.CreatePods.(type) {
+	case int:
 		if cp <= 0 {
-			return fmt.Errorf("CreatePods=%d is non-positive", int(cp))
+			return fmt.Errorf("CreatePods=%d is non-positive", cp)
 		}
 	case string:
 		if !allowParameterizable || !isValidParameterizable(cp) {
