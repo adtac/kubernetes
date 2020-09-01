@@ -1,7 +1,7 @@
 - name: SchedulingBasic
   workloadTemplate:
-  - createNodes: $initialNodes
-  - createPods: $initialPods
+  - createNodes: $initNodes
+  - createPods: $initPods
     podTemplatePath: config/pod-default.yaml
   - createPods: $measurePods
     podTemplatePath: config/pod-default.yaml
@@ -9,21 +9,21 @@
   workloads:
   - name: 500Nodes
     params:
-      initialNodes: 500
-      initialPods: 500
+      initNodes: 500
+      initPods: 500
       measurePods: 1000
   - name: 5000Nodes
     params:
-      initialNodes: 5000
-      initialPods: 1000
+      initNodes: 5000
+      initPods: 1000
       measurePods: 1000
 
 - name: SchedulingPodAntiAffinity
   workloadTemplate:
-  - createNodes: $initialNodes
+  - createNodes: $initNodes
     uniqueNodeLabelStrategy:
       labelKey: kubernetes.io/hostname
-  - createPods: $initialPods
+  - createPods: $initPods
     podTemplatePath: config/pod-with-pod-anti-affinity.yaml
     namespace: sched-setup
   - createPods: $measurePods
@@ -33,11 +33,31 @@
   workloads:
   - name: 500Nodes
     params:
-      initialNodes: 500
-      initialPods: 100
+      initNodes: 500
+      initPods: 100
       measurePods: 400
   - name: 5000Nodes
     params:
-      initialNodes: 500
-      initialPods: 100
+      initNodes: 500
+      initPods: 100
       measurePods: 400
+
+- name: SchedulingSecrets
+  workloadTemplate:
+  - createNodes: $initNodes
+  - createPods: $initPods
+    podTemplatePath: config/pod-with-secret-volume.yaml
+  - createPods: $measurePods
+    podTemplatePath: config/pod-with-secret-volume.yaml
+    collectMetrics: true
+  workloads:
+  - name: 500Nodes
+    params:
+      initNodes: 500
+      initPods: 500
+      measurePods: 1000
+  - name: 5000Nodes
+    params:
+      initNodes: 5000
+      initPods: 5000
+      measurePods: 1000
