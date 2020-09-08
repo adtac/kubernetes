@@ -17,6 +17,7 @@ limitations under the License.
 package benchmark
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -286,6 +288,8 @@ func BenchmarkPerfScheduling(b *testing.B) {
 	}
 
 	dataItems := DataItems{Version: "v1"}
+	benchmarkCtx, benchmarkCancel := context.WithCancel(context.Background())
+	b.Cleanup(benchmarkCancel)
 	for _, tc := range testCases {
 		b.Run(tc.Name, func(b *testing.B) {
 			for _, w := range tc.Workloads {
@@ -293,7 +297,7 @@ func BenchmarkPerfScheduling(b *testing.B) {
 					for feature, flag := range tc.FeatureGates {
 						defer featuregatetesting.SetFeatureGateDuringTest(b, utilfeature.DefaultFeatureGate, feature, flag)()
 					}
-					dataItems.DataItems = append(dataItems.DataItems, runWorkload(b, tc, w)...)
+					dataItems.DataItems = append(dataItems.DataItems, runWorkload(benchmarkCtx, b, tc, w)...)
 				})
 			}
 		})
@@ -303,38 +307,42 @@ func BenchmarkPerfScheduling(b *testing.B) {
 	}
 }
 
-func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
+func runWorkload(testCtx context.Context, b *testing.B, tc *testCase, w *workload) []DataItem {
+	workloadCtx, subtestCancel := context.WithCancel(testCtx)
+	b.Cleanup(subtestCancel)
+	finalFunc, podInformer, clientset := mustSetupScheduler()
+	b.Cleanup(finalFunc)
+
 	var mu sync.Mutex
 	var dataItems []DataItem
-	finalFunc, podInformer, clientset := mustSetupScheduler()
-	defer finalFunc()
-
 	numPodsScheduledPerNamespace := make(map[string]int)
-	numNodes := 0
+	nextNodeIndex := 0
+	// There will be at most len(tc.WorkloadTemplate) createPods ops, and
+	// therefore at most that many errors.
+	barrierAndCollectErrors := make([]error, len(tc.WorkloadTemplate))
 
-	b.ResetTimer()
 	for opIndex, op := range tc.WorkloadTemplate {
 		realOp, err := op.realOp.patchParams(w)
 		if err != nil {
-			b.Fatal(err)
+			b.Fatalf("op %d: %v", opIndex, err)
 		}
 		switch concreteOp := realOp.(type) {
 		case *createNodesOp:
 			nodePreparer, err := getNodePreparer(fmt.Sprintf("node-%d-", opIndex), concreteOp, clientset)
 			if err != nil {
-				b.Fatal(err)
+				b.Fatalf("op %d: %v", opIndex, err)
 			}
-			if err := nodePreparer.PrepareNodes(numNodes); err != nil {
-				b.Fatal(err)
+			if err := nodePreparer.PrepareNodes(nextNodeIndex); err != nil {
+				b.Fatalf("op %d: %v", opIndex, err)
 			}
-			if numNodes == 0 {
+			if nextNodeIndex == 0 {
 				// Schedule a cleanup at most once. The CleanupNodes function will list
 				// and delete *all* nodes.
 				// TODO(#93794): make CleanupNodes only clean up its own nodes to make
 				// this more intuitive?
-				defer nodePreparer.CleanupNodes()
+				b.Cleanup(nodePreparer.CleanupNodes)
 			}
-			numNodes += concreteOp.CreateNodes.(int)
+			nextNodeIndex += concreteOp.CreateNodes.(int)
 
 		case *createPodsOp:
 			var namespace string
@@ -343,24 +351,24 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			} else {
 				namespace = fmt.Sprintf("namespace-%d", opIndex)
 			}
-			var stopCh chan struct{}
 			var collectors []testDataCollector
+			collectorCtx, collectorCancel := context.WithCancel(workloadCtx)
 			if concreteOp.CollectMetrics {
-				stopCh = make(chan struct{})
 				collectors = getTestDataCollectors(podInformer, fmt.Sprintf("%s/%s", b.Name(), namespace), namespace, tc.MetricsCollectorConfig)
 				for _, collector := range collectors {
-					go collector.run(stopCh)
+					go collector.run(collectorCtx)
 				}
 			}
 			if err := createPods(namespace, concreteOp, clientset); err != nil {
-				b.Fatal(err)
+				b.Fatalf("op %d: %v", opIndex, err)
 			}
-			barrierAndCollect := func() {
-				if err := barrierOne(podInformer, b.Name(), namespace, concreteOp.CreatePods.(int)); err != nil {
-					b.Fatal(err)
+			barrierAndCollect := func(idx int) {
+				if err := waitUntilPodsScheduledInNamespace(podInformer, b.Name(), namespace, concreteOp.CreatePods.(int)); err != nil {
+					barrierAndCollectErrors[idx] = err
+					return
 				}
 				if concreteOp.CollectMetrics {
-					close(stopCh)
+					collectorCancel()
 					mu.Lock()
 					for _, collector := range collectors {
 						dataItems = append(dataItems, collector.collect()...)
@@ -376,19 +384,21 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 				} else {
 					numPodsScheduledPerNamespace[namespace] = concreteOp.CreatePods.(int)
 				}
-				go barrierAndCollect()
+				go barrierAndCollect(opIndex)
 			} else {
-				barrierAndCollect()
+				if barrierAndCollect(opIndex); barrierAndCollectErrors[opIndex] != nil {
+					b.Fatalf("op %d: %v", opIndex, barrierAndCollectErrors[opIndex])
+				}
 			}
 
 		case *barrierOp:
-			for _, barrier := range concreteOp.Barrier {
-				if _, ok := numPodsScheduledPerNamespace[barrier]; !ok {
-					b.Fatalf("unknown namespace %s", barrier)
+			for _, namespace := range concreteOp.Barrier {
+				if _, ok := numPodsScheduledPerNamespace[namespace]; !ok {
+					b.Fatalf("op %d: unknown namespace %s", opIndex, namespace)
 				}
 			}
-			if err := barrier(podInformer, b.Name(), concreteOp.Barrier, numPodsScheduledPerNamespace); err != nil {
-				b.Fatal(err)
+			if err := waitUntilPodsScheduled(podInformer, b.Name(), concreteOp.Barrier, numPodsScheduledPerNamespace); err != nil {
+				b.Fatalf("op %d: %v", opIndex, err)
 			}
 			// At the end of the barrier, we can be sure that there are no pods
 			// pending scheduling in the namespaces that we just blocked on.
@@ -400,21 +410,24 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 				}
 			}
 		default:
-			b.Fatalf("invalid op %v", concreteOp)
+			b.Fatalf("op %d: invalid op %v", opIndex, concreteOp)
 		}
 	}
-	if err := barrier(podInformer, b.Name(), nil, numPodsScheduledPerNamespace); err != nil {
+	if err := waitUntilPodsScheduled(podInformer, b.Name(), nil, numPodsScheduledPerNamespace); err != nil {
 		// Any pending pods must be scheduled before this test can be considered to
 		// be complete.
 		b.Fatal(err)
 	}
-	b.StopTimer()
-
+	for opIndex, err := range barrierAndCollectErrors {
+		if err != nil {
+			b.Fatalf("op %d: %v", opIndex, err)
+		}
+	}
 	return dataItems
 }
 
 type testDataCollector interface {
-	run(stopCh chan struct{})
+	run(ctx context.Context)
 	collect() []DataItem
 }
 
@@ -467,37 +480,38 @@ func createPods(namespace string, cpo *createPodsOp, clientset clientset.Interfa
 	return podCreator.CreatePods()
 }
 
-// barrierOne blocks until all pods in the given namespace are scheduled.
-func barrierOne(podInformer coreinformers.PodInformer, name string, namespace string, wantCount int) error {
-	for {
+// waitUntilPodsScheduledInNamespace blocks until all pods in the given
+// namespace are scheduled. Times out after 600 seconds because even at the
+// lowest observed QPS of ~10 pods/sec, a 5000-node test should complete.
+func waitUntilPodsScheduledInNamespace(podInformer coreinformers.PodInformer, name string, namespace string, wantCount int) error {
+	return wait.PollImmediate(1*time.Second, 600*time.Second, func() (bool, error) {
 		scheduled, err := getScheduledPods(podInformer, namespace)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if len(scheduled) >= wantCount {
-			break
+			return true, nil
 		}
-		klog.Infof("%s: namespace %s: got %d existing pods, want %d", name, namespace, len(scheduled), wantCount)
-		time.Sleep(1 * time.Second)
-	}
-	return nil
+		klog.Infof("%s: namespace %s: got %d pods, want %d", name, namespace, len(scheduled), wantCount)
+		return false, nil
+	})
 }
 
-// barrier blocks until the all pods in the given namespaces are scheduled.
-func barrier(podInformer coreinformers.PodInformer, name string, namespaces []string, numPodsScheduledPerNamespace map[string]int) error {
+// waitUntilPodsScheduled blocks until the all pods in the given namespaces are
+// scheduled.
+func waitUntilPodsScheduled(podInformer coreinformers.PodInformer, name string, namespaces []string, numPodsScheduledPerNamespace map[string]int) error {
 	// If unspecified, default to all known namespaces.
 	if namespaces == nil {
 		for namespace := range numPodsScheduledPerNamespace {
 			namespaces = append(namespaces, namespace)
 		}
 	}
-
 	for _, namespace := range namespaces {
 		wantCount, ok := numPodsScheduledPerNamespace[namespace]
 		if !ok {
 			return fmt.Errorf("unknown namespace %s", namespace)
 		}
-		if err := barrierOne(podInformer, name, namespace, wantCount); err != nil {
+		if err := waitUntilPodsScheduledInNamespace(podInformer, name, namespace, wantCount); err != nil {
 			return err
 		}
 	}

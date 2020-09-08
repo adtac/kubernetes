@@ -58,7 +58,7 @@ func NewIntegrationTestNodePreparerWithNodeSpec(client clientset.Interface, coun
 }
 
 // PrepareNodes prepares countToStrategy test nodes.
-func (p *IntegrationTestNodePreparer) PrepareNodes(startIndex int) error {
+func (p *IntegrationTestNodePreparer) PrepareNodes(nextNodeIndex int) error {
 	numNodes := 0
 	for _, v := range p.countToStrategy {
 		numNodes += v.Count
@@ -103,11 +103,12 @@ func (p *IntegrationTestNodePreparer) PrepareNodes(startIndex int) error {
 	if err != nil {
 		klog.Fatalf("Error listing nodes: %v", err)
 	}
-	index := startIndex
-	sum := startIndex
+	index := 0
 	for _, v := range p.countToStrategy {
-		sum += v.Count
-		for ; index < sum; index++ {
+		for i := 0; i < v.Count; i, index = i+1, index+1 {
+			if index < nextNodeIndex {
+				continue
+			}
 			if err := testutils.DoPrepareNode(p.client, &nodes.Items[index], v.Strategy); err != nil {
 				klog.Errorf("Aborting node preparation: %v", err)
 				return err
@@ -118,7 +119,7 @@ func (p *IntegrationTestNodePreparer) PrepareNodes(startIndex int) error {
 }
 
 // CleanupNodes deletes existing test nodes.
-func (p *IntegrationTestNodePreparer) CleanupNodes() error {
+func (p *IntegrationTestNodePreparer) CleanupNodes() {
 	nodes, err := GetReadySchedulableNodes(p.client)
 	if err != nil {
 		klog.Fatalf("Error listing nodes: %v", err)
@@ -128,5 +129,4 @@ func (p *IntegrationTestNodePreparer) CleanupNodes() error {
 			klog.Errorf("Error while deleting Node: %v", err)
 		}
 	}
-	return nil
 }

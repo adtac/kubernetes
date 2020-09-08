@@ -17,6 +17,7 @@ limitations under the License.
 package benchmark
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -158,7 +159,7 @@ func newMetricsCollector(config *metricsCollectorConfig, labels map[string]strin
 	}
 }
 
-func (*metricsCollector) run(stopCh chan struct{}) {
+func (*metricsCollector) run(ctx context.Context) {
 	// metricCollector doesn't need to start before the tests, so nothing to do here.
 }
 
@@ -231,7 +232,7 @@ func newThroughputCollector(podInformer coreinformers.PodInformer, labels map[st
 	}
 }
 
-func (tc *throughputCollector) run(stopCh chan struct{}) {
+func (tc *throughputCollector) run(ctx context.Context) {
 	podsScheduled, err := getScheduledPods(tc.podInformer, tc.namespaces...)
 	if err != nil {
 		klog.Fatalf("%v", err)
@@ -239,7 +240,7 @@ func (tc *throughputCollector) run(stopCh chan struct{}) {
 	lastScheduledCount := len(podsScheduled)
 	for {
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		case <-time.After(throughputSampleFrequency):
 			podsScheduled, err := getScheduledPods(tc.podInformer, tc.namespaces...)
