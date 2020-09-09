@@ -306,21 +306,18 @@ func BenchmarkPerfScheduling(b *testing.B) {
 }
 
 func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
-	// 1800s should be plenty enough even for the 5000-node tests.
-	ctx, cancel := context.WithTimeout(context.Background(), 1800*time.Second)
-	b.Cleanup(cancel)
+	// 30 minutes should be plenty enough even for the 5000-node tests.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 	finalFunc, podInformer, clientset := mustSetupScheduler()
 	b.Cleanup(finalFunc)
 
+	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var dataItems []DataItem
 	numPodsScheduledPerNamespace := make(map[string]int)
 	nextNodeIndex := 0
-	type opError struct {
-		opIndex int
-		err     error
-	}
-	opErrorChan := make(chan opError, 1)
+	errChan := make(chan error, 1)
 
 	for opIndex, op := range tc.WorkloadTemplate {
 		realOp, err := op.realOp.patchParams(w)
@@ -356,6 +353,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			var collectorCancel func()
 			if concreteOp.CollectMetrics {
 				collectorCtx, collectorCancel = context.WithCancel(ctx)
+				defer collectorCancel()
 				collectors = getTestDataCollectors(podInformer, fmt.Sprintf("%s/%s", b.Name(), namespace), namespace, tc.MetricsCollectorConfig)
 				for _, collector := range collectors {
 					go collector.run(collectorCtx)
@@ -367,7 +365,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			barrierAndCollect := func(idx int) {
 				if err := waitUntilPodsScheduledInNamespace(podInformer, b.Name(), namespace, concreteOp.CreatePods.(int)); err != nil {
 					select {
-					case opErrorChan <- opError{opIndex: idx, err: err}:
+					case errChan <- fmt.Errorf("op %d: error in waiting for pods to get scheduled: %w", idx, err):
 					default:
 					}
 					return
@@ -380,7 +378,9 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 					}
 					mu.Unlock()
 				}
+				wg.Done()
 			}
+			wg.Add(1)
 			if concreteOp.SkipWaitToCompletion {
 				// Only record those namespaces that may potentially require barriers
 				// in the future.
@@ -422,10 +422,11 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 		b.Fatal(err)
 	}
 	select {
-	case err := <-opErrorChan:
-		b.Fatalf("op %d: %v", err.opIndex, err.err)
+	case err := <-errChan:
+		b.Fatal(err)
 	default:
 	}
+	wg.Wait()
 	return dataItems
 }
 
@@ -484,10 +485,10 @@ func createPods(namespace string, cpo *createPodsOp, clientset clientset.Interfa
 }
 
 // waitUntilPodsScheduledInNamespace blocks until all pods in the given
-// namespace are scheduled. Times out after 600 seconds because even at the
+// namespace are scheduled. Times out after 10 minutes because even at the
 // lowest observed QPS of ~10 pods/sec, a 5000-node test should complete.
 func waitUntilPodsScheduledInNamespace(podInformer coreinformers.PodInformer, name string, namespace string, wantCount int) error {
-	return wait.PollImmediate(1*time.Second, 600*time.Second, func() (bool, error) {
+	return wait.PollImmediate(1*time.Second, 10*time.Minute, func() (bool, error) {
 		scheduled, err := getScheduledPods(podInformer, namespace)
 		if err != nil {
 			return false, err
