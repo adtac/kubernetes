@@ -124,7 +124,7 @@ func (op *op) UnmarshalJSON(b []byte) error {
 			}
 		}
 	}
-	return fmt.Errorf("cannot unmarshal %s into any known op type: %v", string(b), firstError)
+	return fmt.Errorf("cannot unmarshal %s into any known op type: %w", string(b), firstError)
 }
 
 // realOp is an interface that is implemented by different structs. To evaluate
@@ -288,8 +288,6 @@ func BenchmarkPerfScheduling(b *testing.B) {
 	}
 
 	dataItems := DataItems{Version: "v1"}
-	ctx, cancel := context.WithCancel(context.Background())
-	b.Cleanup(cancel)
 	for _, tc := range testCases {
 		b.Run(tc.Name, func(b *testing.B) {
 			for _, w := range tc.Workloads {
@@ -297,7 +295,7 @@ func BenchmarkPerfScheduling(b *testing.B) {
 					for feature, flag := range tc.FeatureGates {
 						defer featuregatetesting.SetFeatureGateDuringTest(b, utilfeature.DefaultFeatureGate, feature, flag)()
 					}
-					dataItems.DataItems = append(dataItems.DataItems, runWorkload(ctx, b, tc, w)...)
+					dataItems.DataItems = append(dataItems.DataItems, runWorkload(b, tc, w)...)
 				})
 			}
 		})
@@ -307,7 +305,10 @@ func BenchmarkPerfScheduling(b *testing.B) {
 	}
 }
 
-func runWorkload(ctx context.Context, b *testing.B, tc *testCase, w *workload) []DataItem {
+func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
+	// 1800s should be plenty enough even for the 5000-node tests.
+	ctx, cancel := context.WithTimeout(context.Background(), 1800*time.Second)
+	b.Cleanup(cancel)
 	finalFunc, podInformer, clientset := mustSetupScheduler()
 	b.Cleanup(finalFunc)
 
@@ -325,6 +326,11 @@ func runWorkload(ctx context.Context, b *testing.B, tc *testCase, w *workload) [
 		realOp, err := op.realOp.patchParams(w)
 		if err != nil {
 			b.Fatalf("op %d: %v", opIndex, err)
+		}
+		select {
+		case <-ctx.Done():
+			b.Fatalf("op %d: %v", opIndex, ctx.Err())
+		default:
 		}
 		switch concreteOp := realOp.(type) {
 		case *createNodesOp:
@@ -526,7 +532,7 @@ func getSpecFromFile(path *string, spec interface{}) error {
 func getTestCases(path string) ([]*testCase, error) {
 	testCases := make([]*testCase, 0)
 	if err := getSpecFromFile(&path, &testCases); err != nil {
-		return nil, fmt.Errorf("parsing test cases: %v", err)
+		return nil, fmt.Errorf("parsing test cases: %w", err)
 	}
 	return testCases, nil
 }
@@ -582,7 +588,7 @@ func getPodStrategy(cpo *createPodsOp) (testutils.TestPodCreateStrategy, error) 
 func getNodeSpecFromFile(path *string) (*v1.Node, error) {
 	nodeSpec := &v1.Node{}
 	if err := getSpecFromFile(path, nodeSpec); err != nil {
-		return nil, fmt.Errorf("parsing Node: %v", err)
+		return nil, fmt.Errorf("parsing Node: %w", err)
 	}
 	return nodeSpec, nil
 }
@@ -590,7 +596,7 @@ func getNodeSpecFromFile(path *string) (*v1.Node, error) {
 func getPodSpecFromFile(path *string) (*v1.Pod, error) {
 	podSpec := &v1.Pod{}
 	if err := getSpecFromFile(path, podSpec); err != nil {
-		return nil, fmt.Errorf("parsing Pod: %v", err)
+		return nil, fmt.Errorf("parsing Pod: %w", err)
 	}
 	return podSpec, nil
 }
@@ -598,7 +604,7 @@ func getPodSpecFromFile(path *string) (*v1.Pod, error) {
 func getPersistentVolumeSpecFromFile(path *string) (*v1.PersistentVolume, error) {
 	persistentVolumeSpec := &v1.PersistentVolume{}
 	if err := getSpecFromFile(path, persistentVolumeSpec); err != nil {
-		return nil, fmt.Errorf("parsing PersistentVolume: %v", err)
+		return nil, fmt.Errorf("parsing PersistentVolume: %w", err)
 	}
 	return persistentVolumeSpec, nil
 }
@@ -606,7 +612,7 @@ func getPersistentVolumeSpecFromFile(path *string) (*v1.PersistentVolume, error)
 func getPersistentVolumeClaimSpecFromFile(path *string) (*v1.PersistentVolumeClaim, error) {
 	persistentVolumeClaimSpec := &v1.PersistentVolumeClaim{}
 	if err := getSpecFromFile(path, persistentVolumeClaimSpec); err != nil {
-		return nil, fmt.Errorf("parsing PersistentVolumeClaim: %v", err)
+		return nil, fmt.Errorf("parsing PersistentVolumeClaim: %w", err)
 	}
 	return persistentVolumeClaimSpec, nil
 }
