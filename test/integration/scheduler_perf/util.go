@@ -242,6 +242,7 @@ func (tc *throughputCollector) run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		// TODO(#94665): use time.Ticker instead
 		case <-time.After(throughputSampleFrequency):
 			podsScheduled, err := getScheduledPods(tc.podInformer, tc.namespaces...)
 			if err != nil {
