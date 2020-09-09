@@ -103,12 +103,9 @@ func (p *IntegrationTestNodePreparer) PrepareNodes(nextNodeIndex int) error {
 	if err != nil {
 		klog.Fatalf("Error listing nodes: %v", err)
 	}
-	index := 0
+	index := nextNodeIndex
 	for _, v := range p.countToStrategy {
 		for i := 0; i < v.Count; i, index = i+1, index+1 {
-			if index < nextNodeIndex {
-				continue
-			}
 			if err := testutils.DoPrepareNode(p.client, &nodes.Items[index], v.Strategy); err != nil {
 				klog.Errorf("Aborting node preparation: %v", err)
 				return err
