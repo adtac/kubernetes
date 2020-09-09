@@ -288,8 +288,8 @@ func BenchmarkPerfScheduling(b *testing.B) {
 	}
 
 	dataItems := DataItems{Version: "v1"}
-	benchmarkCtx, benchmarkCancel := context.WithCancel(context.Background())
-	b.Cleanup(benchmarkCancel)
+	ctx, cancel := context.WithCancel(context.Background())
+	b.Cleanup(cancel)
 	for _, tc := range testCases {
 		b.Run(tc.Name, func(b *testing.B) {
 			for _, w := range tc.Workloads {
@@ -297,7 +297,7 @@ func BenchmarkPerfScheduling(b *testing.B) {
 					for feature, flag := range tc.FeatureGates {
 						defer featuregatetesting.SetFeatureGateDuringTest(b, utilfeature.DefaultFeatureGate, feature, flag)()
 					}
-					dataItems.DataItems = append(dataItems.DataItems, runWorkload(benchmarkCtx, b, tc, w)...)
+					dataItems.DataItems = append(dataItems.DataItems, runWorkload(ctx, b, tc, w)...)
 				})
 			}
 		})
@@ -307,9 +307,7 @@ func BenchmarkPerfScheduling(b *testing.B) {
 	}
 }
 
-func runWorkload(testCtx context.Context, b *testing.B, tc *testCase, w *workload) []DataItem {
-	workloadCtx, subtestCancel := context.WithCancel(testCtx)
-	b.Cleanup(subtestCancel)
+func runWorkload(ctx context.Context, b *testing.B, tc *testCase, w *workload) []DataItem {
 	finalFunc, podInformer, clientset := mustSetupScheduler()
 	b.Cleanup(finalFunc)
 
@@ -317,9 +315,11 @@ func runWorkload(testCtx context.Context, b *testing.B, tc *testCase, w *workloa
 	var dataItems []DataItem
 	numPodsScheduledPerNamespace := make(map[string]int)
 	nextNodeIndex := 0
-	// There will be at most len(tc.WorkloadTemplate) createPods ops, and
-	// therefore at most that many errors.
-	barrierAndCollectErrors := make([]error, len(tc.WorkloadTemplate))
+	type opError struct {
+		opIndex int
+		err     error
+	}
+	opErrorChan := make(chan opError, 1)
 
 	for opIndex, op := range tc.WorkloadTemplate {
 		realOp, err := op.realOp.patchParams(w)
@@ -335,13 +335,7 @@ func runWorkload(testCtx context.Context, b *testing.B, tc *testCase, w *workloa
 			if err := nodePreparer.PrepareNodes(nextNodeIndex); err != nil {
 				b.Fatalf("op %d: %v", opIndex, err)
 			}
-			if nextNodeIndex == 0 {
-				// Schedule a cleanup at most once. The CleanupNodes function will list
-				// and delete *all* nodes.
-				// TODO(#93794): make CleanupNodes only clean up its own nodes to make
-				// this more intuitive?
-				b.Cleanup(nodePreparer.CleanupNodes)
-			}
+			b.Cleanup(nodePreparer.CleanupNodes)
 			nextNodeIndex += concreteOp.CreateNodes.(int)
 
 		case *createPodsOp:
@@ -352,8 +346,10 @@ func runWorkload(testCtx context.Context, b *testing.B, tc *testCase, w *workloa
 				namespace = fmt.Sprintf("namespace-%d", opIndex)
 			}
 			var collectors []testDataCollector
-			collectorCtx, collectorCancel := context.WithCancel(workloadCtx)
+			var collectorCtx context.Context
+			var collectorCancel func()
 			if concreteOp.CollectMetrics {
+				collectorCtx, collectorCancel = context.WithCancel(ctx)
 				collectors = getTestDataCollectors(podInformer, fmt.Sprintf("%s/%s", b.Name(), namespace), namespace, tc.MetricsCollectorConfig)
 				for _, collector := range collectors {
 					go collector.run(collectorCtx)
@@ -364,7 +360,10 @@ func runWorkload(testCtx context.Context, b *testing.B, tc *testCase, w *workloa
 			}
 			barrierAndCollect := func(idx int) {
 				if err := waitUntilPodsScheduledInNamespace(podInformer, b.Name(), namespace, concreteOp.CreatePods.(int)); err != nil {
-					barrierAndCollectErrors[idx] = err
+					select {
+					case opErrorChan <- opError{opIndex: idx, err: err}:
+					default:
+					}
 					return
 				}
 				if concreteOp.CollectMetrics {
@@ -386,9 +385,7 @@ func runWorkload(testCtx context.Context, b *testing.B, tc *testCase, w *workloa
 				}
 				go barrierAndCollect(opIndex)
 			} else {
-				if barrierAndCollect(opIndex); barrierAndCollectErrors[opIndex] != nil {
-					b.Fatalf("op %d: %v", opIndex, barrierAndCollectErrors[opIndex])
-				}
+				barrierAndCollect(opIndex)
 			}
 
 		case *barrierOp:
@@ -418,10 +415,10 @@ func runWorkload(testCtx context.Context, b *testing.B, tc *testCase, w *workloa
 		// be complete.
 		b.Fatal(err)
 	}
-	for opIndex, err := range barrierAndCollectErrors {
-		if err != nil {
-			b.Fatalf("op %d: %v", opIndex, err)
-		}
+	select {
+	case err := <-opErrorChan:
+		b.Fatalf("op %d: %v", err.opIndex, err.err)
+	default:
 	}
 	return dataItems
 }

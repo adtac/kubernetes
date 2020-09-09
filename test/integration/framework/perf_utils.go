@@ -120,6 +120,8 @@ func (p *IntegrationTestNodePreparer) PrepareNodes(nextNodeIndex int) error {
 
 // CleanupNodes deletes existing test nodes.
 func (p *IntegrationTestNodePreparer) CleanupNodes() {
+	// TODO(#93794): make CleanupNodes only clean up the nodes created by this
+	// IntegrationTestNodePreparer to make this more intuitive.
 	nodes, err := GetReadySchedulableNodes(p.client)
 	if err != nil {
 		klog.Fatalf("Error listing nodes: %v", err)
