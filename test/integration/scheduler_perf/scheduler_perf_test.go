@@ -395,7 +395,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 					b.Fatalf("op %d: unknown namespace %s", opIndex, namespace)
 				}
 			}
-			if err := waitUntilPodsScheduled(podInformer, b.Name(), concreteOp.Namespaces, numPodsScheduledPerNamespace); err != nil {
+			if err := waitUntilPodsScheduled(ctx, podInformer, b.Name(), concreteOp.Namespaces, numPodsScheduledPerNamespace); err != nil {
 				b.Fatalf("op %d: %v", opIndex, err)
 			}
 			// At the end of the barrier, we can be sure that there are no pods
@@ -412,7 +412,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			b.Fatalf("op %d: invalid op %v", opIndex, concreteOp)
 		}
 	}
-	if err := waitUntilPodsScheduled(podInformer, b.Name(), nil, numPodsScheduledPerNamespace); err != nil {
+	if err := waitUntilPodsScheduled(ctx, podInformer, b.Name(), nil, numPodsScheduledPerNamespace); err != nil {
 		// Any pending pods must be scheduled before this test can be considered to
 		// be complete.
 		b.Fatal(err)
@@ -493,20 +493,25 @@ func waitUntilPodsScheduledInNamespace(podInformer coreinformers.PodInformer, na
 
 // waitUntilPodsScheduled blocks until the all pods in the given namespaces are
 // scheduled.
-func waitUntilPodsScheduled(podInformer coreinformers.PodInformer, name string, namespaces []string, numPodsScheduledPerNamespace map[string]int) error {
+func waitUntilPodsScheduled(ctx context.Context, podInformer coreinformers.PodInformer, name string, namespaces []string, numPodsScheduledPerNamespace map[string]int) error {
 	// If unspecified, default to all known namespaces.
-	if len(namespaces) == 0 {
+	if len(namespaces) == 0  {
 		for namespace := range numPodsScheduledPerNamespace {
 			namespaces = append(namespaces, namespace)
 		}
 	}
 	for _, namespace := range namespaces {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		wantCount, ok := numPodsScheduledPerNamespace[namespace]
 		if !ok {
 			return fmt.Errorf("unknown namespace %s", namespace)
 		}
 		if err := waitUntilPodsScheduledInNamespace(podInformer, name, namespace, wantCount); err != nil {
-			return err
+			return fmt.Errorf("error waiting for pods in namespace %q: %w", namespace, err)
 		}
 	}
 	return nil
