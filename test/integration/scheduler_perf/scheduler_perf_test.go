@@ -265,18 +265,14 @@ func (cpo createPodsOp) patchParams(w *workload) (realOp, error) {
 type barrierOp struct {
 	// Must be "barrier".
 	Opcode string
-	// Namespaces to block on. Required. Empty array signifies that the barrier
-	// should block on all namespaces.
+	// Namespaces to block on. Empty array or not specifying this field signifies
+	// that the barrier should block on all namespaces.
 	Namespaces []string
 }
 
 func (bo *barrierOp) isValid(allowParameterization bool) error {
 	if bo.Opcode != barrierOpcode {
 		return fmt.Errorf("invalid opcode")
-	}
-	if bo.Namespaces == nil {
-		// nil isn't the same as an empty array.
-		return fmt.Errorf("namespaces not defined")
 	}
 	return nil
 }
@@ -499,7 +495,7 @@ func waitUntilPodsScheduledInNamespace(podInformer coreinformers.PodInformer, na
 // scheduled.
 func waitUntilPodsScheduled(podInformer coreinformers.PodInformer, name string, namespaces []string, numPodsScheduledPerNamespace map[string]int) error {
 	// If unspecified, default to all known namespaces.
-	if namespaces == nil {
+	if len(namespaces) == 0 {
 		for namespace := range numPodsScheduledPerNamespace {
 			namespaces = append(namespaces, namespace)
 		}
