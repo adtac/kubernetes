@@ -40,7 +40,10 @@ import (
 )
 
 const (
-	configFile = "config/performance-config.yaml"
+	configFile        = "config/performance-config.yaml"
+	createNodesOpcode = "createNodes"
+	createPodsOpcode  = "createPods"
+	barrierOpcode     = "barrier"
 )
 
 var (
@@ -94,8 +97,11 @@ type workload struct {
 	// Name of the workload.
 	Name string
 	// Values of parameters used in the workloadTemplate.
-	Params map[string]interface{}
+	Params workloadParams
 }
+
+type workloadParams map[string]interface{}
+func (wp workloadParams) getInt(key string) (int, bool) { n, ok := wp[key].(float64); return int(n), ok }
 
 // op is a dummy struct which stores the real op in itself.
 type op struct {
@@ -132,7 +138,7 @@ func (op *op) UnmarshalJSON(b []byte) error {
 type realOp interface {
 	// isValid verifies the validity of the op args such as node/pod count. Note
 	// that we don't catch undefined parameters at this stage.
-	isValid(allowParameterizable bool) error
+	isValid(allowParameterization bool) error
 	// collectsMetrics checks if the op collects metrics.
 	collectsMetrics() bool
 	// patchParams returns a patched realOp of the same type after substituting
@@ -150,8 +156,12 @@ func isValidParameterizable(val string) bool {
 
 // createNodesOp defines an op where nodes are created as a part of a workload.
 type createNodesOp struct {
-	// Number of nodes to create. Parameterizable.
-	CreateNodes interface{}
+	// Must be "createNodes".
+	Opcode string
+	// Number of nodes to create. Parameterizable through CountParam.
+	Count int
+	// Template parameter for Count.
+	CountParam string
 	// Path to spec file describing the nodes to create. Optional.
 	NodeTemplatePath *string
 	// At most one of the following strategies can be defined. Optional, defaults
@@ -161,23 +171,15 @@ type createNodesOp struct {
 	UniqueNodeLabelStrategy  *testutils.UniqueNodeLabelStrategy
 }
 
-func (cno *createNodesOp) isValid(allowParameterizable bool) error {
-	if cn, ok := cno.CreateNodes.(float64); ok {
-		// Unfortunately, the YAML parser may parse numerical values into
-		// interface{} as a int or a float64 in a seemingly arbitrary fashion.
-		cno.CreateNodes = int(cn)
+func (cno *createNodesOp) isValid(allowParameterization bool) error {
+	if cno.Opcode != createNodesOpcode {
+		return fmt.Errorf("invalid opcode")
 	}
-	switch cn := cno.CreateNodes.(type) {
-	case int:
-		if cn <= 0 {
-			return fmt.Errorf("CreateNodes=%d is non-positive", cn)
-		}
-	case string:
-		if !allowParameterizable || !isValidParameterizable(cn) {
-			return fmt.Errorf("CreateNodes=%s is not a valid parameterizable", cn)
-		}
-	default:
-		return fmt.Errorf("CreateNodes=%v is of unknown type %T", cn, cn)
+	ok := (
+		cno.Count > 0 ||
+		(cno.CountParam != "" && allowParameterization && isValidParameterizable(cno.CountParam)))
+	if !ok {
+		return fmt.Errorf("invalid Count=%d / CountParam=%q", cno.Count, cno.CountParam)
 	}
 	return nil
 }
@@ -187,10 +189,10 @@ func (*createNodesOp) collectsMetrics() bool {
 }
 
 func (cno createNodesOp) patchParams(w *workload) (realOp, error) {
-	if cn, ok := cno.CreateNodes.(string); ok {
-		var paramDefined bool
-		if cno.CreateNodes, paramDefined = w.Params[cn[1:]]; !paramDefined {
-			return nil, fmt.Errorf("parameter %s is not defined", cn)
+	if cno.CountParam != "" {
+		var ok bool
+		if cno.Count, ok = w.Params.getInt(cno.CountParam[1:]); !ok {
+			return nil, fmt.Errorf("parameter %s is not defined or is not an integer", cno.CountParam)
 		}
 	}
 	return &cno, (&cno).isValid(false)
@@ -200,8 +202,12 @@ func (cno createNodesOp) patchParams(w *workload) (realOp, error) {
 // The test can block on the completion of this op before moving forward or
 // continue asynchronously.
 type createPodsOp struct {
-	// Number of pods to schedule. Parameterizable.
-	CreatePods interface{}
+	// Must be "createPods".
+	Opcode string
+	// Number of pods to schedule. Parameterizable through CountParam.
+	Count int
+	// Template parameter for Count.
+	CountParam string
 	// Whether or not to enable metrics collection for this createPodsOp.
 	// Optional. Both CollectMetrics and SkipWaitToCompletion cannot be true at
 	// the same time for a particular createPodsOp.
@@ -219,21 +225,21 @@ type createPodsOp struct {
 	PersistentVolumeClaimTemplatePath *string
 }
 
-func (cpo *createPodsOp) isValid(allowParameterizable bool) error {
-	if cp, ok := cpo.CreatePods.(float64); ok {
-		cpo.CreatePods = int(cp)
+func (cpo *createPodsOp) isValid(allowParameterization bool) error {
+	if cpo.Opcode != createPodsOpcode {
+		return fmt.Errorf("invalid opcode")
 	}
-	switch cp := cpo.CreatePods.(type) {
-	case int:
-		if cp <= 0 {
-			return fmt.Errorf("CreatePods=%d is non-positive", cp)
-		}
-	case string:
-		if !allowParameterizable || !isValidParameterizable(cp) {
-			return fmt.Errorf("CreatePods=%s is not a valid parameterizable", cp)
-		}
-	default:
-		return fmt.Errorf("CreatePods=%v is of unknown type %T", cp, cp)
+	ok := (
+		cpo.Count > 0 ||
+		(cpo.CountParam != "" && allowParameterization && isValidParameterizable(cpo.CountParam)))
+	if !ok {
+		return fmt.Errorf("invalid Count=%d / CountParam=%q", cpo.Count, cpo.CountParam)
+	}
+	if cpo.CollectMetrics && cpo.SkipWaitToCompletion {
+		// While it's technically possible to achieve this, the additional
+		// complexity is not worth it, especially given that we don't have any
+		// use-cases right now.
+		return fmt.Errorf("collectMetrics and skipWaitToCompletion cannot be true at the same time")
 	}
 	return nil
 }
@@ -243,10 +249,10 @@ func (cpo *createPodsOp) collectsMetrics() bool {
 }
 
 func (cpo createPodsOp) patchParams(w *workload) (realOp, error) {
-	if cp, ok := cpo.CreatePods.(string); ok {
-		var paramDefined bool
-		if cpo.CreatePods, paramDefined = w.Params[cp[1:]]; !paramDefined {
-			return nil, fmt.Errorf("parameter %s is not defined", cp)
+	if cpo.CountParam != "" {
+		var ok bool
+		if cpo.Count, ok = w.Params.getInt(cpo.CountParam[1:]); !ok {
+			return nil, fmt.Errorf("parameter %s is not defined", cpo.CountParam)
 		}
 	}
 	return &cpo, (&cpo).isValid(false)
@@ -257,15 +263,20 @@ func (cpo createPodsOp) patchParams(w *workload) (realOp, error) {
 // were scheduled with SkipWaitToCompletion set to true. A barrierOp is added
 // at the end of each each workload automatically.
 type barrierOp struct {
+	// Must be "barrier".
+	Opcode string
 	// Namespaces to block on. Required. Empty array signifies that the barrier
 	// should block on all namespaces.
-	Barrier []string
+	Namespaces []string
 }
 
-func (bo *barrierOp) isValid(allowParameterizable bool) error {
-	if bo.Barrier == nil {
+func (bo *barrierOp) isValid(allowParameterization bool) error {
+	if bo.Opcode != barrierOpcode {
+		return fmt.Errorf("invalid opcode")
+	}
+	if bo.Namespaces == nil {
 		// nil isn't the same as an empty array.
-		return fmt.Errorf("barrier not defined")
+		return fmt.Errorf("namespaces not defined")
 	}
 	return nil
 }
@@ -312,12 +323,10 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 	finalFunc, podInformer, clientset := mustSetupScheduler()
 	b.Cleanup(finalFunc)
 
-	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var dataItems []DataItem
 	numPodsScheduledPerNamespace := make(map[string]int)
 	nextNodeIndex := 0
-	errChan := make(chan error, 1)
 
 	for opIndex, op := range tc.WorkloadTemplate {
 		realOp, err := op.realOp.patchParams(w)
@@ -339,7 +348,7 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 				b.Fatalf("op %d: %v", opIndex, err)
 			}
 			b.Cleanup(nodePreparer.CleanupNodes)
-			nextNodeIndex += concreteOp.CreateNodes.(int)
+			nextNodeIndex += concreteOp.Count
 
 		case *createPodsOp:
 			var namespace string
@@ -362,56 +371,47 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 			if err := createPods(namespace, concreteOp, clientset); err != nil {
 				b.Fatalf("op %d: %v", opIndex, err)
 			}
-			barrierAndCollect := func(idx int) {
-				if err := waitUntilPodsScheduledInNamespace(podInformer, b.Name(), namespace, concreteOp.CreatePods.(int)); err != nil {
-					select {
-					case errChan <- fmt.Errorf("op %d: error in waiting for pods to get scheduled: %w", idx, err):
-					default:
-					}
-					return
-				}
-				if concreteOp.CollectMetrics {
-					collectorCancel()
-					mu.Lock()
-					for _, collector := range collectors {
-						dataItems = append(dataItems, collector.collect()...)
-					}
-					mu.Unlock()
-				}
-				wg.Done()
-			}
-			wg.Add(1)
 			if concreteOp.SkipWaitToCompletion {
 				// Only record those namespaces that may potentially require barriers
 				// in the future.
 				if _, ok := numPodsScheduledPerNamespace[namespace]; ok {
-					numPodsScheduledPerNamespace[namespace] += concreteOp.CreatePods.(int)
+					numPodsScheduledPerNamespace[namespace] += concreteOp.Count
 				} else {
-					numPodsScheduledPerNamespace[namespace] = concreteOp.CreatePods.(int)
+					numPodsScheduledPerNamespace[namespace] = concreteOp.Count
 				}
-				go barrierAndCollect(opIndex)
 			} else {
-				barrierAndCollect(opIndex)
+				if err := waitUntilPodsScheduledInNamespace(podInformer, b.Name(), namespace, concreteOp.Count); err != nil {
+					b.Fatalf("op %d: error in waiting for pods to get scheduled: %v", opIndex, err)
+				}
+			}
+			if concreteOp.CollectMetrics {
+				collectorCancel()
+				mu.Lock()
+				for _, collector := range collectors {
+					dataItems = append(dataItems, collector.collect()...)
+				}
+				mu.Unlock()
 			}
 
 		case *barrierOp:
-			for _, namespace := range concreteOp.Barrier {
+			for _, namespace := range concreteOp.Namespaces {
 				if _, ok := numPodsScheduledPerNamespace[namespace]; !ok {
 					b.Fatalf("op %d: unknown namespace %s", opIndex, namespace)
 				}
 			}
-			if err := waitUntilPodsScheduled(podInformer, b.Name(), concreteOp.Barrier, numPodsScheduledPerNamespace); err != nil {
+			if err := waitUntilPodsScheduled(podInformer, b.Name(), concreteOp.Namespaces, numPodsScheduledPerNamespace); err != nil {
 				b.Fatalf("op %d: %v", opIndex, err)
 			}
 			// At the end of the barrier, we can be sure that there are no pods
 			// pending scheduling in the namespaces that we just blocked on.
-			if len(concreteOp.Barrier) == 0 {
+			if len(concreteOp.Namespaces) == 0 {
 				numPodsScheduledPerNamespace = make(map[string]int)
 			} else {
-				for _, namespace := range concreteOp.Barrier {
+				for _, namespace := range concreteOp.Namespaces {
 					delete(numPodsScheduledPerNamespace, namespace)
 				}
 			}
+
 		default:
 			b.Fatalf("op %d: invalid op %v", opIndex, concreteOp)
 		}
@@ -421,12 +421,6 @@ func runWorkload(b *testing.B, tc *testCase, w *workload) []DataItem {
 		// be complete.
 		b.Fatal(err)
 	}
-	select {
-	case err := <-errChan:
-		b.Fatal(err)
-	default:
-	}
-	wg.Wait()
 	return dataItems
 }
 
@@ -462,13 +456,13 @@ func getNodePreparer(prefix string, cno *createNodesOp, clientset clientset.Inte
 		}
 		return framework.NewIntegrationTestNodePreparerWithNodeSpec(
 			clientset,
-			[]testutils.CountToStrategy{{Count: cno.CreateNodes.(int), Strategy: nodeStrategy}},
+			[]testutils.CountToStrategy{{Count: cno.Count, Strategy: nodeStrategy}},
 			node,
 		), nil
 	}
 	return framework.NewIntegrationTestNodePreparer(
 		clientset,
-		[]testutils.CountToStrategy{{Count: cno.CreateNodes.(int), Strategy: nodeStrategy}},
+		[]testutils.CountToStrategy{{Count: cno.Count, Strategy: nodeStrategy}},
 		prefix,
 	), nil
 }
@@ -479,7 +473,7 @@ func createPods(namespace string, cpo *createPodsOp, clientset clientset.Interfa
 		return err
 	}
 	config := testutils.NewTestPodCreatorConfig()
-	config.AddStrategy(namespace, cpo.CreatePods.(int), strategy)
+	config.AddStrategy(namespace, cpo.Count, strategy)
 	podCreator := testutils.NewTestPodCreator(clientset, config)
 	return podCreator.CreatePods()
 }
