@@ -101,7 +101,11 @@ type workload struct {
 }
 
 type workloadParams map[string]interface{}
-func (wp workloadParams) getInt(key string) (int, bool) { n, ok := wp[key].(float64); return int(n), ok }
+
+func (wp workloadParams) getInt(key string) (int, bool) {
+	n, ok := wp[key].(float64)
+	return int(n), ok
+}
 
 // op is a dummy struct which stores the real op in itself.
 type op struct {
@@ -176,8 +180,7 @@ func (cno *createNodesOp) isValid(allowParameterization bool) error {
 	if cno.Opcode != createNodesOpcode {
 		return fmt.Errorf("invalid opcode")
 	}
-	ok := (
-		cno.Count > 0 ||
+	ok := (cno.Count > 0 ||
 		(cno.CountParam != "" && allowParameterization && isValidParameterizable(cno.CountParam)))
 	if !ok {
 		return fmt.Errorf("invalid Count=%d / CountParam=%q", cno.Count, cno.CountParam)
@@ -230,8 +233,7 @@ func (cpo *createPodsOp) isValid(allowParameterization bool) error {
 	if cpo.Opcode != createPodsOpcode {
 		return fmt.Errorf("invalid opcode")
 	}
-	ok := (
-		cpo.Count > 0 ||
+	ok := (cpo.Count > 0 ||
 		(cpo.CountParam != "" && allowParameterization && isValidParameterizable(cpo.CountParam)))
 	if !ok {
 		return fmt.Errorf("invalid Count=%d / CountParam=%q", cpo.Count, cpo.CountParam)
@@ -496,7 +498,7 @@ func waitUntilPodsScheduledInNamespace(podInformer coreinformers.PodInformer, na
 // scheduled.
 func waitUntilPodsScheduled(ctx context.Context, podInformer coreinformers.PodInformer, name string, namespaces []string, numPodsScheduledPerNamespace map[string]int) error {
 	// If unspecified, default to all known namespaces.
-	if len(namespaces) == 0  {
+	if len(namespaces) == 0 {
 		for namespace := range numPodsScheduledPerNamespace {
 			namespaces = append(namespaces, namespace)
 		}
