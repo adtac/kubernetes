@@ -115,7 +115,8 @@ func (op *op) UnmarshalJSON(b []byte) error {
 		&createNodesOp{},
 		&createPodsOp{},
 		&barrierOp{},
-		// TODO(#93793): add a sleep timer op to simulate user action?
+		// TODO(#93793): add a sleep timer op to simulate waiting?
+		// TODO(#94601): add a delete nodes op to simulate scaling behaviour?
 	}
 	var firstError error
 	for _, possibleOp := range possibleOps {
