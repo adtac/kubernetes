@@ -47,12 +47,18 @@ import (
 const (
 	// Name of the plugin used in the plugin registry and configurations.
 	Name = "DefaultPreemption"
+	// Percentage of nodes to consider for dry-running. Must be at least
+	// minNodesToDryRun.
+	percentageOfNodesToDryRun = 10
+	// Minimum number of nodes to consider for dry-running.
+	minNodesToDryRun = 100
 )
 
 // DefaultPreemption is a PostFilter plugin implements the preemption logic.
 type DefaultPreemption struct {
 	fh        framework.FrameworkHandle
 	pdbLister policylisters.PodDisruptionBudgetLister
+	nlw       *nodeListWindow
 }
 
 var _ framework.PostFilterPlugin = &DefaultPreemption{}
@@ -67,6 +73,7 @@ func New(_ runtime.Object, fh framework.FrameworkHandle) (framework.Plugin, erro
 	pl := DefaultPreemption{
 		fh:        fh,
 		pdbLister: getPDBLister(fh.SharedInformerFactory()),
+		nlw:       &nodeListWindow{},
 	}
 	return &pl, nil
 }
@@ -120,7 +127,7 @@ func (pl *DefaultPreemption) preempt(ctx context.Context, state *framework.Cycle
 	}
 
 	// 2) Find all preemption candidates.
-	candidates, err := FindCandidates(ctx, cs, state, pod, m, ph, nodeLister, pl.pdbLister)
+	candidates, err := pl.findCandidates(ctx, cs, state, pod, m, ph, nodeLister, pl.pdbLister)
 	if err != nil || len(candidates) == 0 {
 		return "", err
 	}
@@ -145,11 +152,11 @@ func (pl *DefaultPreemption) preempt(ctx context.Context, state *framework.Cycle
 	return bestCandidate.Name(), nil
 }
 
-// FindCandidates calculates a slice of preemption candidates.
+// findCandidates calculates a slice of preemption candidates.
 // Each candidate is executable to make the given <pod> schedulable.
-func FindCandidates(ctx context.Context, cs kubernetes.Interface, state *framework.CycleState, pod *v1.Pod,
-	m framework.NodeToStatusMap, ph framework.PreemptHandle, nodeLister framework.NodeInfoLister,
-	pdbLister policylisters.PodDisruptionBudgetLister) ([]Candidate, error) {
+func (pl *DefaultPreemption) findCandidates(ctx context.Context, cs kubernetes.Interface,
+	state *framework.CycleState, pod *v1.Pod, m framework.NodeToStatusMap, ph framework.PreemptHandle,
+	nodeLister framework.NodeInfoLister, pdbLister policylisters.PodDisruptionBudgetLister) ([]Candidate, error) {
 	allNodes, err := nodeLister.List()
 	if err != nil {
 		return nil, err
@@ -179,7 +186,7 @@ func FindCandidates(ctx context.Context, cs kubernetes.Interface, state *framewo
 	if err != nil {
 		return nil, err
 	}
-	return dryRunPreemption(ctx, ph, state, pod, potentialNodes, pdbs), nil
+	return pl.dryRunPreemption(ctx, ph, state, pod, potentialNodes, pdbs), nil
 }
 
 // PodEligibleToPreemptOthers determines whether this pod should be considered
@@ -230,32 +237,90 @@ func nodesWherePreemptionMightHelp(nodes []*framework.NodeInfo, m framework.Node
 	return potentialNodes
 }
 
+// numNodesToDryRun returns the appropriate number of nodes after satisfying
+// the constraints given by percentageOfNodesToDryRun and minNodesToDryRun.
+func numNodesToDryRun(numNodes int) int {
+	if numNodes < minNodesToDryRun || percentageOfNodesToDryRun > 100 {
+		return numNodes
+	}
+	n := (numNodes * percentageOfNodesToDryRun) / 100
+	if n < minNodesToDryRun {
+		return minNodesToDryRun
+	}
+	return n
+}
+
+// nodeListWindow maintains state about the last window used for preemption,
+// calculates a new window each time, and updates its internal state.
+type nodeListWindow struct {
+	left  int
+	right int
+}
+
+// updateAndGetWindow returns a [left, right) tuple that should be used as the
+// window of nodes to consider for dry-running in this cycle. If <right> is
+// lower than the <left> index, it means [0, rightIndex) and [left, numNodes)
+// should both be considered. If <left> and <right> are both zero, the whole
+// node list must be considered. <right> will always be lesser than or equal to
+// <numNodes>.
+func (nlw *nodeListWindow) updateAndGetWindow(numNodes int) (int, int) {
+	if numNodes < minNodesToDryRun {
+		return 0, numNodes
+	}
+	width := numNodesToDryRun(numNodes)
+	// klog.V(1).Infof("nlw width=%d", width)
+	if nlw.left > nlw.right {
+		nlw.left = 0
+	}
+	if nlw.right >= numNodes {
+		// numNodes must be lower than last time for this to happen. Simply reset
+		// the counters and restart from the beginning.
+		nlw.left, nlw.right = 0, 0
+	}
+	nlw.left = nlw.right
+	nlw.right = (nlw.right + width) % numNodes
+	return nlw.left, nlw.right
+}
+
 // dryRunPreemption simulates Preemption logic on <potentialNodes> in parallel,
 // and returns all possible preemption candidates.
-func dryRunPreemption(ctx context.Context, fh framework.PreemptHandle, state *framework.CycleState,
-	pod *v1.Pod, potentialNodes []*framework.NodeInfo, pdbs []*policy.PodDisruptionBudget) []Candidate {
+func (pl *DefaultPreemption) dryRunPreemption(ctx context.Context, fh framework.PreemptHandle,
+	state *framework.CycleState, pod *v1.Pod, potentialNodes []*framework.NodeInfo,
+	pdbs []*policy.PodDisruptionBudget) []Candidate {
 	var resultLock sync.Mutex
 	var candidates []Candidate
 
-	checkNode := func(i int) {
-		nodeInfoCopy := potentialNodes[i].Clone()
-		stateCopy := state.Clone()
-		pods, numPDBViolations, fits := selectVictimsOnNode(ctx, fh, stateCopy, pod, nodeInfoCopy, pdbs)
-		if fits {
-			resultLock.Lock()
-			victims := extenderv1.Victims{
-				Pods:             pods,
-				NumPDBViolations: int64(numPDBViolations),
+	checkNode := func(left int, numNodes int) func(int) {
+		return func(i int) {
+			nodeInfoCopy := potentialNodes[(left + i) % numNodes].Clone()
+			stateCopy := state.Clone()
+			pods, numPDBViolations, fits := selectVictimsOnNode(ctx, fh, stateCopy, pod, nodeInfoCopy, pdbs)
+			if fits {
+				resultLock.Lock()
+				victims := extenderv1.Victims{
+					Pods:             pods,
+					NumPDBViolations: int64(numPDBViolations),
+				}
+				c := candidate{
+					victims: &victims,
+					name:    nodeInfoCopy.Node().Name,
+				}
+				// TODO(adtac): place Lock here and measure?
+				candidates = append(candidates, &c)
+				resultLock.Unlock()
 			}
-			c := candidate{
-				victims: &victims,
-				name:    nodeInfoCopy.Node().Name,
-			}
-			candidates = append(candidates, &c)
-			resultLock.Unlock()
 		}
 	}
-	parallelize.Until(ctx, len(potentialNodes), checkNode)
+	left, right := pl.nlw.updateAndGetWindow(len(potentialNodes))
+	if left == 0 && right == 0 {
+		right = len(potentialNodes)
+	}
+	width := right - left
+	if left > right {
+		width = (len(potentialNodes) - left) + right
+	}
+	// klog.V(1).Infof("nlw left=%d, right=%d, width=%d", left, right, width)
+	parallelize.Until(ctx, width, checkNode(left, len(potentialNodes)))
 	return candidates
 }
 
