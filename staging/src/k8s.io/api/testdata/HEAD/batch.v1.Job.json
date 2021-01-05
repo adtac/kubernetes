@@ -41,36 +41,34 @@
     ]
   },
   "spec": {
-    "parallelism": 896585016,
-    "completions": 1305381319,
-    "activeDeadlineSeconds": -5584804243908071872,
-    "backoffLimit": -783752440,
+    "stopped": false,
+    "parallelism": -1971381490,
+    "completions": -1300313567,
+    "activeDeadlineSeconds": -5238012362384355226,
+    "backoffLimit": 1509959897,
     "selector": {
       "matchLabels": {
-        "hjT9s-j41-0-6p-JFHn7y-74.-0MUORQQ.N4": "3L.u"
+        "h0-6pJ": "Hn7y-74.-0MUORQQ.N2.1L"
       },
       "matchExpressions": [
         {
-          "key": "S91.e5K-_e63_-_3-h",
-          "operator": "In",
-          "values": [
-            "3_bQw.-dG6c-.x"
-          ]
+          "key": "PGg8-2_kS91.e5K-_e63_-_3n",
+          "operator": "DoesNotExist"
         }
       ]
     },
-    "manualSelector": true,
+    "manualSelector": false,
     "template": {
       "metadata": {
         "name": "25",
         "generateName": "26",
         "namespace": "27",
         "selfLink": "28",
-        "uid": "ɸ=ǤÆ碛,1",
-        "resourceVersion": "10505102892351749453",
-        "generation": 7014477246743953430,
+        "uid": "(dɅ囥糷磩窮秳ķ蟒苾h^樅燴壩卄",
+        "resourceVersion": "11116133553898009544",
+        "generation": -6225778594348390831,
         "creationTimestamp": null,
-        "deletionGracePeriodSeconds": -5781250394576755223,
+        "deletionGracePeriodSeconds": 9050008078557060172,
         "labels": {
           "30": "31"
         },
@@ -82,9 +80,9 @@
             "apiVersion": "34",
             "kind": "35",
             "name": "36",
-            "uid": "譋娲瘹ɭȊɚɎ(",
-            "controller": false,
-            "blockOwnerDeletion": true
+            "uid": "Ü掸8½£.vǴʌ鴜Ł%ŨȈ\u003eŅ£趕ã",
+            "controller": true,
+            "blockOwnerDeletion": false
           }
         ],
         "finalizers": [
@@ -94,7 +92,7 @@
         "managedFields": [
           {
             "manager": "39",
-            "operation": "糷磩窮秳ķ蟒苾h",
+            "operation": "-议}ȧ外ĺ稥氹Ç|¶",
             "apiVersion": "40",
             "fieldsType": "41"
           }
@@ -106,21 +104,23 @@
             "name": "42",
             "hostPath": {
               "path": "43",
-              "type": "龷ȪÆl"
+              "type": "讦ĭ"
             },
             "emptyDir": {
-              "medium": "瓷雼浢Ü礽绅{囥",
-              "sizeLimit": "721"
+              "medium": "l恕ɍȇ廄裭4懙鏮嵒",
+              "sizeLimit": "364"
             },
             "gcePersistentDisk": {
               "pdName": "44",
               "fsType": "45",
-              "partition": 1673568505
+              "partition": 1628097005,
+              "readOnly": true
             },
             "awsElasticBlockStore": {
               "volumeID": "46",
               "fsType": "47",
-              "partition": -972874331
+              "partition": -1805066691,
+              "readOnly": true
             },
             "gitRepo": {
               "repository": "48",
@@ -133,10 +133,10 @@
                 {
                   "key": "52",
                   "path": "53",
-                  "mode": -1628457490
+                  "mode": 1673568505
                 }
               ],
-              "defaultMode": 798972405,
+              "defaultMode": 180310627,
               "optional": false
             },
             "nfs": {
@@ -146,13 +146,15 @@
             "iscsi": {
               "targetPortal": "56",
               "iqn": "57",
-              "lun": -1888506207,
+              "lun": -1249768441,
               "iscsiInterface": "58",
               "fsType": "59",
               "readOnly": true,
               "portals": [
                 "60"
               ],
+              "chapAuthDiscovery": true,
+              "chapAuthSession": true,
               "secretRef": {
                 "name": "61"
               },
@@ -207,7 +209,8 @@
               "secretFile": "84",
               "secretRef": {
                 "name": "85"
-              }
+              },
+              "readOnly": true
             },
             "flocker": {
               "datasetName": "86",
@@ -224,19 +227,20 @@
                   "resourceFieldRef": {
                     "containerName": "91",
                     "resource": "92",
-                    "divisor": "110"
+                    "divisor": "448"
                   },
-                  "mode": 848754324
+                  "mode": 1718125857
                 }
               ],
-              "defaultMode": -331664193
+              "defaultMode": 1727149457
             },
             "fc": {
               "targetWWNs": [
                 "93"
               ],
-              "lun": -1341615783,
+              "lun": 60559686,
               "fsType": "94",
+              "readOnly": true,
               "wwids": [
                 "95"
               ]
@@ -252,11 +256,11 @@
                 {
                   "key": "99",
                   "path": "100",
-                  "mode": -421817404
+                  "mode": -802089648
                 }
               ],
-              "defaultMode": 938765968,
-              "optional": false
+              "defaultMode": 1917056292,
+              "optional": true
             },
             "vsphereVolume": {
               "volumePath": "101",
@@ -267,6 +271,7 @@
             "quobyte": {
               "registry": "105",
               "volume": "106",
+              "readOnly": true,
               "user": "107",
               "group": "108",
               "tenant": "109"
@@ -274,10 +279,10 @@
             "azureDisk": {
               "diskName": "110",
               "diskURI": "111",
-              "cachingMode": "鎥ʟ\u003c$洅ɹ7",
+              "cachingMode": "{舁吉蓨O澘",
               "fsType": "112",
               "readOnly": false,
-              "kind": "Þ"
+              "kind": "棈_"
             },
             "photonPersistentDisk": {
               "pdID": "113",
@@ -292,7 +297,7 @@
                       {
                         "key": "116",
                         "path": "117",
-                        "mode": 1550211208
+                        "mode": -1892330166
                       }
                     ],
                     "optional": false
@@ -308,9 +313,9 @@
                         "resourceFieldRef": {
                           "containerName": "121",
                           "resource": "122",
-                          "divisor": "750"
+                          "divisor": "463"
                         },
-                        "mode": -1240667156
+                        "mode": -1006328793
                       }
                     ]
                   },
@@ -320,19 +325,19 @@
                       {
                         "key": "124",
                         "path": "125",
-                        "mode": -1147975588
+                        "mode": -1806019390
                       }
                     ],
-                    "optional": true
+                    "optional": false
                   },
                   "serviceAccountToken": {
                     "audience": "126",
-                    "expirationSeconds": 2293771102284463819,
+                    "expirationSeconds": 7918383928242400236,
                     "path": "127"
                   }
                 }
               ],
-              "defaultMode": -1884322607
+              "defaultMode": -836939996
             },
             "portworxVolume": {
               "volumeID": "128",
@@ -356,13 +361,14 @@
               "volumeName": "138",
               "volumeNamespace": "139",
               "fsType": "140",
+              "readOnly": true,
               "secretRef": {
                 "name": "141"
               }
             },
             "csi": {
               "driver": "142",
-              "readOnly": true,
+              "readOnly": false,
               "fsType": "143",
               "volumeAttributes": {
                 "144": "145"
@@ -378,11 +384,11 @@
                   "generateName": "148",
                   "namespace": "149",
                   "selfLink": "150",
-                  "uid": "曢\\%枅:",
-                  "resourceVersion": "1051165191612104121",
-                  "generation": 1514679477039738680,
+                  "uid": "ʞĹ鑑6ǊPM饣`诫z徃鷢6ȥ啕禗Ǐ",
+                  "resourceVersion": "6287542340170670932",
+                  "generation": 5790223614448855702,
                   "creationTimestamp": null,
-                  "deletionGracePeriodSeconds": 284300875610791466,
+                  "deletionGracePeriodSeconds": -2724736674644969829,
                   "labels": {
                     "152": "153"
                   },
@@ -394,9 +400,9 @@
                       "apiVersion": "156",
                       "kind": "157",
                       "name": "158",
-                      "uid": "啞川J缮ǚb",
+                      "uid": "ǄLŬp:籀帊ìƅS·",
                       "controller": false,
-                      "blockOwnerDeletion": true
+                      "blockOwnerDeletion": false
                     }
                   ],
                   "finalizers": [
@@ -406,7 +412,7 @@
                   "managedFields": [
                     {
                       "manager": "161",
-                      "operation": "昹ʞĹ鑑6",
+                      "operation": "0ɔȖ脵鴈Ōƾ焁",
                       "apiVersion": "162",
                       "fieldsType": "163"
                     }
@@ -414,11 +420,11 @@
                 },
                 "spec": {
                   "accessModes": [
-                    "ɥ踓Ǻǧ湬淊kŪ睴鸏:ɥ"
+                    "ȱ蓿彭聡A3fƻf"
                   ],
                   "selector": {
                     "matchLabels": {
-                      "50qso79yg--79-e-a74bc-v--0jjy5.405--l071yyms7-tk1po6c-m61733-x-2v4r--b/dm7": "020h-OK-_8gI_z_-tY-R6S17_.8CnK_O.d-._NwcGnp"
+                      "b06-4y4-j8553sog-405--l071yyms7-tk1po6c-m61733-x-2v4r--b/h-J-M.9_T.q-o7.y-SQ9": "020h-OK-_8gI_z_-tY-R6S17_.8CnK_O.d-._NwcGnp"
                     },
                     "matchExpressions": [
                       {

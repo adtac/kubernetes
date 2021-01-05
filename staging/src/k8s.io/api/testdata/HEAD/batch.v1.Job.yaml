@@ -30,49 +30,48 @@ metadata:
   selfLink: "5"
   uid: "7"
 spec:
-  activeDeadlineSeconds: -5584804243908071872
-  backoffLimit: -783752440
-  completions: 1305381319
-  manualSelector: true
-  parallelism: 896585016
+  activeDeadlineSeconds: -5238012362384355226
+  backoffLimit: 1509959897
+  completions: -1300313567
+  manualSelector: false
+  parallelism: -1971381490
   selector:
     matchExpressions:
-    - key: S91.e5K-_e63_-_3-h
-      operator: In
-      values:
-      - 3_bQw.-dG6c-.x
+    - key: PGg8-2_kS91.e5K-_e63_-_3n
+      operator: DoesNotExist
     matchLabels:
-      hjT9s-j41-0-6p-JFHn7y-74.-0MUORQQ.N4: 3L.u
+      h0-6pJ: Hn7y-74.-0MUORQQ.N2.1L
+  stopped: false
   template:
     metadata:
       annotations:
         "32": "33"
       clusterName: "38"
       creationTimestamp: null
-      deletionGracePeriodSeconds: -5781250394576755223
+      deletionGracePeriodSeconds: 9050008078557060172
       finalizers:
       - "37"
       generateName: "26"
-      generation: 7014477246743953430
+      generation: -6225778594348390831
       labels:
         "30": "31"
       managedFields:
       - apiVersion: "40"
         fieldsType: "41"
         manager: "39"
-        operation: 糷磩窮秳ķ蟒苾h
+        operation: -议}ȧ外ĺ稥氹Ç|¶
       name: "25"
       namespace: "27"
       ownerReferences:
       - apiVersion: "34"
-        blockOwnerDeletion: true
-        controller: false
+        blockOwnerDeletion: false
+        controller: true
         kind: "35"
         name: "36"
-        uid: 譋娲瘹ɭȊɚɎ(
-      resourceVersion: "10505102892351749453"
+        uid: Ü掸8½£.vǴʌ鴜Ł%ŨȈ>Ņ£趕ã
+      resourceVersion: "11116133553898009544"
       selfLink: "28"
-      uid: ɸ=ǤÆ碛,1
+      uid: (dɅ囥糷磩窮秳ķ蟒苾h^樅燴壩卄
     spec:
       activeDeadlineSeconds: 5965170857034075371
       affinity:
@@ -761,14 +760,15 @@ spec:
       volumes:
       - awsElasticBlockStore:
           fsType: "47"
-          partition: -972874331
+          partition: -1805066691
+          readOnly: true
           volumeID: "46"
         azureDisk:
-          cachingMode: 鎥ʟ<$洅ɹ7
+          cachingMode: '{舁吉蓨O澘'
           diskName: "110"
           diskURI: "111"
           fsType: "112"
-          kind: Þ
+          kind: 棈_
           readOnly: false
         azureFile:
           readOnly: true
@@ -778,6 +778,7 @@ spec:
           monitors:
           - "81"
           path: "82"
+          readOnly: true
           secretFile: "84"
           secretRef:
             name: "85"
@@ -788,36 +789,36 @@ spec:
             name: "80"
           volumeID: "78"
         configMap:
-          defaultMode: 938765968
+          defaultMode: 1917056292
           items:
           - key: "99"
-            mode: -421817404
+            mode: -802089648
             path: "100"
           name: "98"
-          optional: false
+          optional: true
         csi:
           driver: "142"
           fsType: "143"
           nodePublishSecretRef:
             name: "146"
-          readOnly: true
+          readOnly: false
           volumeAttributes:
             "144": "145"
         downwardAPI:
-          defaultMode: -331664193
+          defaultMode: 1727149457
           items:
           - fieldRef:
               apiVersion: "89"
               fieldPath: "90"
-            mode: 848754324
+            mode: 1718125857
             path: "88"
             resourceFieldRef:
               containerName: "91"
-              divisor: "110"
+              divisor: "448"
               resource: "92"
         emptyDir:
-          medium: 瓷雼浢Ü礽绅{囥
-          sizeLimit: "721"
+          medium: l恕ɍȇ廄裭4懙鏮嵒
+          sizeLimit: "364"
         ephemeral:
           volumeClaimTemplate:
             metadata:
@@ -825,33 +826,33 @@ spec:
                 "154": "155"
               clusterName: "160"
               creationTimestamp: null
-              deletionGracePeriodSeconds: 284300875610791466
+              deletionGracePeriodSeconds: -2724736674644969829
               finalizers:
               - "159"
               generateName: "148"
-              generation: 1514679477039738680
+              generation: 5790223614448855702
               labels:
                 "152": "153"
               managedFields:
               - apiVersion: "162"
                 fieldsType: "163"
                 manager: "161"
-                operation: 昹ʞĹ鑑6
+                operation: 0ɔȖ脵鴈Ōƾ焁
               name: "147"
               namespace: "149"
               ownerReferences:
               - apiVersion: "156"
-                blockOwnerDeletion: true
+                blockOwnerDeletion: false
                 controller: false
                 kind: "157"
                 name: "158"
-                uid: 啞川J缮ǚb
-              resourceVersion: "1051165191612104121"
+                uid: ǄLŬp:籀帊ìƅS·
+              resourceVersion: "6287542340170670932"
               selfLink: "150"
-              uid: '曢\%枅:'
+              uid: ʞĹ鑑6ǊPM饣`诫z徃鷢6ȥ啕禗Ǐ
             spec:
               accessModes:
-              - ɥ踓Ǻǧ湬淊kŪ睴鸏:ɥ
+              - ȱ蓿彭聡A3fƻf
               dataSource:
                 apiGroup: "172"
                 kind: "173"
@@ -866,13 +867,14 @@ spec:
                 - key: Td2-NY
                   operator: DoesNotExist
                 matchLabels:
-                  50qso79yg--79-e-a74bc-v--0jjy5.405--l071yyms7-tk1po6c-m61733-x-2v4r--b/dm7: 020h-OK-_8gI_z_-tY-R6S17_.8CnK_O.d-._NwcGnp
+                  b06-4y4-j8553sog-405--l071yyms7-tk1po6c-m61733-x-2v4r--b/h-J-M.9_T.q-o7.y-SQ9: 020h-OK-_8gI_z_-tY-R6S17_.8CnK_O.d-._NwcGnp
               storageClassName: "171"
               volumeMode: =å睫}堇硲蕵ɢ苆ǮńMǰ溟ɴ扵閝ȝ
               volumeName: "170"
         fc:
           fsType: "94"
-          lun: -1341615783
+          lun: 60559686
+          readOnly: true
           targetWWNs:
           - "93"
           wwids:
@@ -889,8 +891,9 @@ spec:
           datasetUUID: "87"
         gcePersistentDisk:
           fsType: "45"
-          partition: 1673568505
+          partition: 1628097005
           pdName: "44"
+          readOnly: true
         gitRepo:
           directory: "50"
           repository: "48"
@@ -901,13 +904,15 @@ spec:
           readOnly: true
         hostPath:
           path: "43"
-          type: 龷ȪÆl
+          type: 讦ĭ
         iscsi:
+          chapAuthDiscovery: true
+          chapAuthSession: true
           fsType: "59"
           initiatorName: "62"
           iqn: "57"
           iscsiInterface: "58"
-          lun: -1888506207
+          lun: -1249768441
           portals:
           - "60"
           readOnly: true
@@ -928,39 +933,40 @@ spec:
           fsType: "129"
           volumeID: "128"
         projected:
-          defaultMode: -1884322607
+          defaultMode: -836939996
           sources:
           - configMap:
               items:
               - key: "124"
-                mode: -1147975588
+                mode: -1806019390
                 path: "125"
               name: "123"
-              optional: true
+              optional: false
             downwardAPI:
               items:
               - fieldRef:
                   apiVersion: "119"
                   fieldPath: "120"
-                mode: -1240667156
+                mode: -1006328793
                 path: "118"
                 resourceFieldRef:
                   containerName: "121"
-                  divisor: "750"
+                  divisor: "463"
                   resource: "122"
             secret:
               items:
               - key: "116"
-                mode: 1550211208
+                mode: -1892330166
                 path: "117"
               name: "115"
               optional: false
             serviceAccountToken:
               audience: "126"
-              expirationSeconds: 2293771102284463819
+              expirationSeconds: 7918383928242400236
               path: "127"
         quobyte:
           group: "108"
+          readOnly: true
           registry: "105"
           tenant: "109"
           user: "107"
@@ -989,15 +995,16 @@ spec:
           system: "131"
           volumeName: "136"
         secret:
-          defaultMode: 798972405
+          defaultMode: 180310627
           items:
           - key: "52"
-            mode: -1628457490
+            mode: 1673568505
             path: "53"
           optional: false
           secretName: "51"
         storageos:
           fsType: "140"
+          readOnly: true
           secretRef:
             name: "141"
           volumeName: "138"

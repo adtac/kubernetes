@@ -480,7 +480,6 @@ func (jm *Controller) syncJob(key string) (bool, error) {
 	activePods := controller.FilterActivePods(pods)
 	active := int32(len(activePods))
 	succeeded, failed := getStatus(pods)
-	conditions := len(job.Status.Conditions)
 	// job first start
 	if job.Status.StartTime == nil {
 		now := metav1.Now()
@@ -517,6 +516,7 @@ func (jm *Controller) syncJob(key string) (bool, error) {
 		failureMessage = "Job was active longer than specified deadline"
 	}
 
+	jobConditionsChanged := false
 	if jobFailed {
 		errCh := make(chan error, active)
 		jm.deleteJobPods(&job, activePods, errCh)
@@ -532,6 +532,7 @@ func (jm *Controller) syncJob(key string) (bool, error) {
 		failed += active
 		active = 0
 		job.Status.Conditions = append(job.Status.Conditions, newCondition(batch.JobFailed, failureReason, failureMessage))
+		jobConditionsChanged = true
 		jm.recorder.Event(&job, v1.EventTypeWarning, failureReason, failureMessage)
 	} else {
 		if jobNeedsSync && job.DeletionTimestamp == nil {
@@ -566,9 +567,42 @@ func (jm *Controller) syncJob(key string) (bool, error) {
 		}
 		if complete {
 			job.Status.Conditions = append(job.Status.Conditions, newCondition(batch.JobComplete, "", ""))
+			jobConditionsChanged = true
 			now := metav1.Now()
 			job.Status.CompletionTime = &now
 			jm.recorder.Event(&job, v1.EventTypeNormal, "Completed", "Job completed")
+		} else if *job.Spec.Stopped {
+			// Job can be in the stopped only if it is NOT completed.
+			exists := false
+			for _, c := range job.Status.Conditions {
+				if c.Type == batch.JobStopped {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				jm.recorder.Event(&job, v1.EventTypeNormal, "Stopped", "Job stopped")
+				job.Status.Conditions = append(job.Status.Conditions, newCondition(batch.JobStopped, "", ""))
+				jobConditionsChanged = true
+				now := metav1.Now()
+				job.Status.StopTime = &now
+			}
+		} else {
+			result := make([]batch.JobCondition, 0)
+			exists := false
+			for _, c := range job.Status.Conditions {
+				if c.Type != batch.JobStopped {
+					result = append(result, c)
+				} else {
+					exists = true
+				}
+			}
+			if exists {
+				jm.recorder.Event(&job, v1.EventTypeNormal, "Resumed", "Job resumed")
+				job.Status.Conditions = result
+				jobConditionsChanged = true
+				job.Status.StopTime = nil
+			}
 		}
 	}
 
@@ -582,12 +616,13 @@ func (jm *Controller) syncJob(key string) (bool, error) {
 	}
 
 	// no need to update the job if the status hasn't changed since last time
-	if job.Status.Active != active || job.Status.Succeeded != succeeded || job.Status.Failed != failed || len(job.Status.Conditions) != conditions {
+	if job.Status.Active != active || job.Status.Succeeded != succeeded || job.Status.Failed != failed || jobConditionsChanged {
 		job.Status.Active = active
 		job.Status.Succeeded = succeeded
 		job.Status.Failed = failed
 
 		if err := jm.updateHandler(&job); err != nil {
+			fmt.Printf("this=%v\n", err)
 			return forget, err
 		}
 
@@ -695,20 +730,10 @@ func (jm *Controller) manageJob(activePods []*v1.Pod, succeeded int32, job *batc
 	}
 
 	var errCh chan error
-	if active > parallelism {
-		diff := active - parallelism
-		errCh = make(chan error, diff)
-		jm.expectations.ExpectDeletions(jobKey, int(diff))
-		klog.V(4).Infof("Too many pods running job %q, need %d, deleting %d", jobKey, parallelism, diff)
-		// Sort the pods in the order such that not-ready < ready, unscheduled
-		// < scheduled, and pending < running. This ensures that we delete pods
-		// in the earlier stages whenever possible.
-		sort.Sort(controller.ActivePods(activePods))
-
-		active -= diff
+	deletePods := func(numPodsToDelete int32) {
 		wait := sync.WaitGroup{}
-		wait.Add(int(diff))
-		for i := int32(0); i < diff; i++ {
+		wait.Add(int(numPodsToDelete))
+		for i := int32(0); i < numPodsToDelete; i++ {
 			go func(ix int32) {
 				defer wait.Done()
 				if err := jm.podControl.DeletePod(job.Namespace, activePods[ix].Name, job); err != nil {
@@ -727,6 +752,26 @@ func (jm *Controller) manageJob(activePods []*v1.Pod, succeeded int32, job *batc
 			}(i)
 		}
 		wait.Wait()
+	}
+
+	if *job.Spec.Stopped {
+		numPodsToDelete := active
+		jm.expectations.ExpectDeletions(jobKey, int(numPodsToDelete))
+		klog.V(4).Infof("job %q is stopped, deleting all pods (%d active)", jobKey, active)
+		active = 0
+		deletePods(numPodsToDelete)
+
+	} else if active > parallelism {
+		diff := active - parallelism
+		errCh = make(chan error, diff)
+		jm.expectations.ExpectDeletions(jobKey, int(diff))
+		klog.V(4).Infof("Too many pods running job %q, need %d, deleting %d", jobKey, parallelism, diff)
+		// Sort the pods in the order such that not-ready < ready, unscheduled
+		// < scheduled, and pending < running. This ensures that we delete pods
+		// in the earlier stages whenever possible.
+		sort.Sort(controller.ActivePods(activePods))
+		active -= diff
+		deletePods(diff)
 
 	} else if active < parallelism {
 		wantActive := int32(0)

@@ -64,6 +64,7 @@ func (JobList) SwaggerDoc() map[string]string {
 
 var map_JobSpec = map[string]string{
 	"":                        "JobSpec describes how the job execution will look like.",
+	"stopped":                 "Stopped specifies whether the Job controller should create Pods or not. If a Job is created in the stopped state, no Pods are created by the Job controller. If a Job enters the stopped state (i.e. the flag goes from false to true), the Job controller will delete all Pods associated with this Job. Defaults to false.",
 	"parallelism":             "Specifies the maximum desired number of pods the job should run at any given time. The actual number of pods running in steady state will be less than this number when ((.spec.completions - .status.successful) < .spec.parallelism), i.e. when the work left to do is less than max parallelism. More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/",
 	"completions":             "Specifies the desired number of successfully finished pods the job should be run with.  Setting to nil means that the success of any pod signals the success of all pods, and allows parallelism to have any positive value.  Setting to 1 means that parallelism is limited to 1 and the success of that pod signals the success of the job. More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/",
 	"activeDeadlineSeconds":   "Specifies the duration in seconds relative to the startTime that the job may be active before the system tries to terminate it; value must be positive integer",
@@ -80,8 +81,9 @@ func (JobSpec) SwaggerDoc() map[string]string {
 
 var map_JobStatus = map[string]string{
 	"":               "JobStatus represents the current state of a Job.",
-	"conditions":     "The latest available observations of an object's current state. When a job fails, one of the conditions will have type == \"Failed\". More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/",
+	"conditions":     "The latest available observations of an object's current state. Exactly one of \"Stopped\", \"Failed\", or \"Complete\" will be a part of the Job's conditions. More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/",
 	"startTime":      "Represents time when the job was acknowledged by the job controller. It is not guaranteed to be set in happens-before order across separate operations. It is represented in RFC3339 form and is in UTC.",
+	"stopTime":       "Represents time when the job was last stopped. This will be set only when the Stopped condition is in the Conditions field. It is represented in RFC3339 form and is in UTC.",
 	"completionTime": "Represents time when the job was completed. It is not guaranteed to be set in happens-before order across separate operations. It is represented in RFC3339 form and is in UTC. The completion time is only set when the job finishes successfully.",
 	"active":         "The number of actively running pods.",
 	"succeeded":      "The number of pods which reached phase Succeeded.",

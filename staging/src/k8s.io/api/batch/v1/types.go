@@ -60,6 +60,14 @@ type JobList struct {
 // JobSpec describes how the job execution will look like.
 type JobSpec struct {
 
+	// Stopped specifies whether the Job controller should create Pods or not. If
+	// a Job is created in the stopped state, no Pods are created by the Job
+	// controller. If a Job enters the stopped state (i.e. the flag goes from
+	// false to true), the Job controller will delete all Pods associated with
+	// this Job. Defaults to false.
+	// +optional
+	Stopped *bool `json:"stopped,omitempty" protobuf:"varint,10,opt,name=stopped"`
+
 	// Specifies the maximum desired number of pods the job should
 	// run at any given time. The actual number of pods running in steady state will
 	// be less than this number when ((.spec.completions - .status.successful) < .spec.parallelism),
@@ -130,8 +138,9 @@ type JobSpec struct {
 
 // JobStatus represents the current state of a Job.
 type JobStatus struct {
-	// The latest available observations of an object's current state.
-	// When a job fails, one of the conditions will have type == "Failed".
+	// The latest available observations of an object's current state. Exactly
+	// one of "Stopped", "Failed", or "Complete" will be a part of the Job's
+	// conditions.
 	// More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
 	// +optional
 	// +patchMergeKey=type
@@ -143,6 +152,12 @@ type JobStatus struct {
 	// It is represented in RFC3339 form and is in UTC.
 	// +optional
 	StartTime *metav1.Time `json:"startTime,omitempty" protobuf:"bytes,2,opt,name=startTime"`
+
+	// Represents time when the job was last stopped. This will be set only when
+	// the Stopped condition is in the Conditions field.
+	// It is represented in RFC3339 form and is in UTC.
+	// +optional
+	StopTime *metav1.Time `json:"stopTime,omitempty" protobuf:"bytes,7,opt,name=stopTime"`
 
 	// Represents time when the job was completed. It is not guaranteed to
 	// be set in happens-before order across separate operations.
@@ -168,6 +183,8 @@ type JobConditionType string
 
 // These are valid conditions of a job.
 const (
+	// JobStopped means the job has been stopped.
+	JobStopped JobConditionType = "Stopped"
 	// JobComplete means the job has completed its execution.
 	JobComplete JobConditionType = "Complete"
 	// JobFailed means the job has failed its execution.

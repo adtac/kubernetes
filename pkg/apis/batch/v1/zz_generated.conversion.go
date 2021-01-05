@@ -198,6 +198,7 @@ func Convert_batch_JobList_To_v1_JobList(in *batch.JobList, out *v1.JobList, s c
 }
 
 func autoConvert_v1_JobSpec_To_batch_JobSpec(in *v1.JobSpec, out *batch.JobSpec, s conversion.Scope) error {
+	out.Stopped = (*bool)(unsafe.Pointer(in.Stopped))
 	out.Parallelism = (*int32)(unsafe.Pointer(in.Parallelism))
 	out.Completions = (*int32)(unsafe.Pointer(in.Completions))
 	out.ActiveDeadlineSeconds = (*int64)(unsafe.Pointer(in.ActiveDeadlineSeconds))
@@ -212,6 +213,7 @@ func autoConvert_v1_JobSpec_To_batch_JobSpec(in *v1.JobSpec, out *batch.JobSpec,
 }
 
 func autoConvert_batch_JobSpec_To_v1_JobSpec(in *batch.JobSpec, out *v1.JobSpec, s conversion.Scope) error {
+	out.Stopped = (*bool)(unsafe.Pointer(in.Stopped))
 	out.Parallelism = (*int32)(unsafe.Pointer(in.Parallelism))
 	out.Completions = (*int32)(unsafe.Pointer(in.Completions))
 	out.ActiveDeadlineSeconds = (*int64)(unsafe.Pointer(in.ActiveDeadlineSeconds))
@@ -228,6 +230,7 @@ func autoConvert_batch_JobSpec_To_v1_JobSpec(in *batch.JobSpec, out *v1.JobSpec,
 func autoConvert_v1_JobStatus_To_batch_JobStatus(in *v1.JobStatus, out *batch.JobStatus, s conversion.Scope) error {
 	out.Conditions = *(*[]batch.JobCondition)(unsafe.Pointer(&in.Conditions))
 	out.StartTime = (*metav1.Time)(unsafe.Pointer(in.StartTime))
+	out.StopTime = (*metav1.Time)(unsafe.Pointer(in.StopTime))
 	out.CompletionTime = (*metav1.Time)(unsafe.Pointer(in.CompletionTime))
 	out.Active = in.Active
 	out.Succeeded = in.Succeeded
@@ -243,6 +246,7 @@ func Convert_v1_JobStatus_To_batch_JobStatus(in *v1.JobStatus, out *batch.JobSta
 func autoConvert_batch_JobStatus_To_v1_JobStatus(in *batch.JobStatus, out *v1.JobStatus, s conversion.Scope) error {
 	out.Conditions = *(*[]v1.JobCondition)(unsafe.Pointer(&in.Conditions))
 	out.StartTime = (*metav1.Time)(unsafe.Pointer(in.StartTime))
+	out.StopTime = (*metav1.Time)(unsafe.Pointer(in.StopTime))
 	out.CompletionTime = (*metav1.Time)(unsafe.Pointer(in.CompletionTime))
 	out.Active = in.Active
 	out.Succeeded = in.Succeeded
