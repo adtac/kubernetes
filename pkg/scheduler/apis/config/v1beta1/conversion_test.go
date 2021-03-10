@@ -35,7 +35,12 @@ func TestV1beta1ToConfigKubeSchedulerConfigurationConversion(t *testing.T) {
 		{
 			name:   "default conversion v1beta1 to config",
 			config: v1beta1.KubeSchedulerConfiguration{},
-			want:   config.KubeSchedulerConfiguration{AlgorithmSource: config.SchedulerAlgorithmSource{Provider: pointer.StringPtr(v1beta1.SchedulerDefaultProviderName)}},
+			want: config.KubeSchedulerConfiguration{
+				ComponentConfigVersion: SchemeGroupVersion.String(),
+				AlgorithmSource: config.SchedulerAlgorithmSource{
+					Provider: pointer.StringPtr(v1beta1.SchedulerDefaultProviderName),
+				},
+			},
 		},
 	}
 

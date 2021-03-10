@@ -49,6 +49,10 @@ const (
 type KubeSchedulerConfiguration struct {
 	metav1.TypeMeta
 
+	// ComponentConfigVersion is the external type version that should be used to
+	// decide things such as which plugins are deprecated.
+	ComponentConfigVersion string
+
 	// Parallelism defines the amount of parallelism in algorithms for scheduling a Pods. Must be greater than 0. Defaults to 16
 	Parallelism int32
 

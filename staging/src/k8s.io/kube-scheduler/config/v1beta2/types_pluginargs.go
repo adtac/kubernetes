@@ -56,26 +56,6 @@ type InterPodAffinityArgs struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// NodeLabelArgs holds arguments used to configure the NodeLabel plugin.
-type NodeLabelArgs struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// PresentLabels should be present for the node to be considered a fit for hosting the pod
-	// +listType=atomic
-	PresentLabels []string `json:"presentLabels,omitempty"`
-	// AbsentLabels should be absent for the node to be considered a fit for hosting the pod
-	// +listType=atomic
-	AbsentLabels []string `json:"absentLabels,omitempty"`
-	// Nodes that have labels in the list will get a higher score.
-	// +listType=atomic
-	PresentLabelsPreference []string `json:"presentLabelsPreference,omitempty"`
-	// Nodes that don't have labels in the list will get a higher score.
-	// +listType=atomic
-	AbsentLabelsPreference []string `json:"absentLabelsPreference,omitempty"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
 // NodeResourcesFitArgs holds arguments used to configure the NodeResourcesFit plugin.
 type NodeResourcesFitArgs struct {
 	metav1.TypeMeta `json:",inline"`
@@ -186,22 +166,6 @@ type ResourceSpec struct {
 	Name string `json:"name"`
 	// Weight of the resource.
 	Weight int64 `json:"weight,omitempty"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// ServiceAffinityArgs holds arguments used to configure the ServiceAffinity plugin.
-type ServiceAffinityArgs struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// AffinityLabels are homogeneous for pods that are scheduled to a node.
-	// (i.e. it returns true IFF this pod can be added to this node such that all other pods in
-	// the same service are running on nodes with the exact same values for Labels).
-	// +listType=atomic
-	AffinityLabels []string `json:"affinityLabels,omitempty"`
-	// AntiAffinityLabelsPreference are the labels to consider for service anti affinity scoring.
-	// +listType=atomic
-	AntiAffinityLabelsPreference []string `json:"antiAffinityLabelsPreference,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

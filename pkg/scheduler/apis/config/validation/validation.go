@@ -29,6 +29,8 @@ import (
 	componentbasevalidation "k8s.io/component-base/config/validation"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta1"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta2"
 )
 
 // ValidateKubeSchedulerConfiguration ensures validation of the KubeSchedulerConfiguration struct
@@ -49,7 +51,7 @@ func ValidateKubeSchedulerConfiguration(cc *config.KubeSchedulerConfiguration) f
 		for i := range cc.Profiles {
 			profile := &cc.Profiles[i]
 			path := profilesPath.Index(i)
-			allErrs = append(allErrs, validateKubeSchedulerProfile(path, profile)...)
+			allErrs = append(allErrs, validateKubeSchedulerProfile(path, cc.ComponentConfigVersion, profile)...)
 			if idx, ok := existingProfiles[profile.SchedulerName]; ok {
 				allErrs = append(allErrs, field.Duplicate(path.Child("schedulerName"), profilesPath.Index(idx).Child("schedulerName")))
 			}
@@ -80,10 +82,76 @@ func ValidateKubeSchedulerConfiguration(cc *config.KubeSchedulerConfiguration) f
 	return allErrs
 }
 
-func validateKubeSchedulerProfile(path *field.Path, profile *config.KubeSchedulerProfile) field.ErrorList {
+type removedPlugins struct {
+	schemeGroupVersion string
+	plugins            []string
+}
+
+var removedPluginsByVersion = []removedPlugins{
+	{
+		schemeGroupVersion: v1beta1.SchemeGroupVersion.String(),
+		plugins:            []string{},
+	},
+	{
+		schemeGroupVersion: v1beta2.SchemeGroupVersion.String(),
+		plugins:            []string{"NodeLabel", "ServiceAffinity", "NodePreferAvoidPods"},
+	},
+}
+
+func isPluginRemoved(componentConfigVersion string, name string) (bool, string) {
+	for _, dp := range removedPluginsByVersion {
+		for _, plugin := range dp.plugins {
+			if name == plugin {
+				return true, dp.schemeGroupVersion
+			}
+		}
+		if componentConfigVersion == dp.schemeGroupVersion {
+			// We don't care about removals after this particular API version.
+			break
+		}
+	}
+	return false, ""
+}
+
+func validatePluginSetForRemovedPlugins(path *field.Path, componentConfigVersion string, ps config.PluginSet) field.ErrorList {
+	allErrs := field.ErrorList{}
+	for i, plugin := range ps.Enabled {
+		if removed, removedVersion := isPluginRemoved(componentConfigVersion, plugin.Name); removed {
+			allErrs = append(allErrs, field.Invalid(path.Child("enabled").Index(i), plugin.Name, fmt.Sprintf("was removed in version %q (KubeSchedulerConfiguration is version %q)", removedVersion, componentConfigVersion)))
+		}
+	}
+	return allErrs
+}
+
+func validateKubeSchedulerProfile(path *field.Path, componentConfigVersion string, profile *config.KubeSchedulerProfile) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if len(profile.SchedulerName) == 0 {
 		allErrs = append(allErrs, field.Required(path.Child("schedulerName"), ""))
+	}
+	if profile.Plugins != nil {
+		pluginsPath := path.Child("plugins")
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("queueSort"), componentConfigVersion, profile.Plugins.QueueSort)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("preFilter"), componentConfigVersion, profile.Plugins.PreFilter)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("filter"), componentConfigVersion, profile.Plugins.Filter)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("postFilter"), componentConfigVersion, profile.Plugins.PostFilter)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("preScore"), componentConfigVersion, profile.Plugins.PreScore)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("score"), componentConfigVersion, profile.Plugins.Score)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("reserve"), componentConfigVersion, profile.Plugins.Reserve)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("permit"), componentConfigVersion, profile.Plugins.Permit)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("preBind"), componentConfigVersion, profile.Plugins.PreBind)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("bind"), componentConfigVersion, profile.Plugins.Bind)...)
+		allErrs = append(allErrs, validatePluginSetForRemovedPlugins(
+			pluginsPath.Child("postBind"), componentConfigVersion, profile.Plugins.PostBind)...)
 	}
 	return allErrs
 }

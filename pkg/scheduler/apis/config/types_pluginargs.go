@@ -56,7 +56,9 @@ type InterPodAffinityArgs struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// NodeLabelArgs holds arguments used to configure the NodeLabel plugin.
+// NodeLabelArgs holds arguments used to configure the NodeLabel plugin. Note:
+// this plugin has been deprecated and is only configurable through the
+// scheduler policy API and the v1beta1 component config API.
 type NodeLabelArgs struct {
 	metav1.TypeMeta
 
@@ -180,7 +182,9 @@ type ResourceSpec struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ServiceAffinityArgs holds arguments used to configure the ServiceAffinity plugin.
+// ServiceAffinityArgs holds arguments used to configure the ServiceAffinity
+// plugin. Note: this plugin has been deprecated and is only configurable
+// through the scheduler policy API and the v1beta1 component config API.
 type ServiceAffinityArgs struct {
 	metav1.TypeMeta
 

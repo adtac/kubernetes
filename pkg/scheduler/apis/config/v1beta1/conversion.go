@@ -142,6 +142,7 @@ func Convert_v1beta1_KubeSchedulerConfiguration_To_config_KubeSchedulerConfigura
 	if err := autoConvert_v1beta1_KubeSchedulerConfiguration_To_config_KubeSchedulerConfiguration(in, out, s); err != nil {
 		return err
 	}
+	out.ComponentConfigVersion = SchemeGroupVersion.String()
 	out.AlgorithmSource.Provider = pointer.StringPtr(v1beta1.SchedulerDefaultProviderName)
 	return convertToInternalPluginConfigArgs(out)
 }

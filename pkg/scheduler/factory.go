@@ -68,6 +68,8 @@ type Configurator struct {
 
 	schedulerCache internalcache.Cache
 
+	componentConfigVersion string
+
 	// Always check all predicates even if the middle of one predicate fails.
 	alwaysCheckAllPredicates bool
 
@@ -136,6 +138,7 @@ func (c *Configurator) create() (*Scheduler, error) {
 	// It's a "cluster event" -> "plugin names" map.
 	clusterEventMap := make(map[framework.ClusterEvent]sets.String)
 	profiles, err := profile.NewMap(c.profiles, c.registry, c.recorderFactory,
+		frameworkruntime.WithComponentConfigVersion(c.componentConfigVersion),
 		frameworkruntime.WithClientSet(c.client),
 		frameworkruntime.WithInformerFactory(c.informerFactory),
 		frameworkruntime.WithSnapshotSharedLister(c.nodeInfoSnapshot),

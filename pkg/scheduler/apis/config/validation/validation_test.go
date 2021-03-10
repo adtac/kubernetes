@@ -25,15 +25,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta1"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta2"
 )
 
 func TestValidateKubeSchedulerConfiguration(t *testing.T) {
 	podInitialBackoffSeconds := int64(1)
 	podMaxBackoffSeconds := int64(1)
 	validConfig := &config.KubeSchedulerConfiguration{
-		Parallelism:        8,
-		HealthzBindAddress: "0.0.0.0:10254",
-		MetricsBindAddress: "0.0.0.0:10254",
+		ComponentConfigVersion: v1beta2.SchemeGroupVersion.String(),
+		Parallelism:            8,
+		HealthzBindAddress:     "0.0.0.0:10254",
+		MetricsBindAddress:     "0.0.0.0:10254",
 		ClientConnection: componentbaseconfig.ClientConnectionConfiguration{
 			AcceptContentTypes: "application/json",
 			ContentType:        "application/json",
@@ -154,6 +157,17 @@ func TestValidateKubeSchedulerConfiguration(t *testing.T) {
 		BindVerb:       "bar",
 	})
 
+	badRemovedPlugins := validConfig.DeepCopy()
+	badRemovedPlugins.Profiles[0].Plugins.Score.Enabled = append(badRemovedPlugins.Profiles[0].Plugins.Score.Enabled, config.Plugin{Name: "ServiceAffinity", Weight: 2})
+
+	// ServiceAffinity is okay in v1beta1.
+	goodRemovedPlugins1 := validConfig.DeepCopy()
+	goodRemovedPlugins1.ComponentConfigVersion = v1beta1.SchemeGroupVersion.String()
+	goodRemovedPlugins1.Profiles[0].Plugins.Score.Enabled = append(goodRemovedPlugins1.Profiles[0].Plugins.Score.Enabled, config.Plugin{Name: "ServiceAffinity", Weight: 2})
+
+	goodRemovedPlugins2 := validConfig.DeepCopy()
+	goodRemovedPlugins2.Profiles[0].Plugins.Score.Enabled = append(goodRemovedPlugins2.Profiles[0].Plugins.Score.Enabled, config.Plugin{Name: "PodTopologySpread", Weight: 2})
+
 	scenarios := map[string]struct {
 		expectedToFail bool
 		config         *config.KubeSchedulerConfiguration
@@ -229,6 +243,18 @@ func TestValidateKubeSchedulerConfiguration(t *testing.T) {
 		"extender-duplicate-bind": {
 			expectedToFail: true,
 			config:         extenderDuplicateBind,
+		},
+		"bad-removed-plugins": {
+			expectedToFail: true,
+			config:         badRemovedPlugins,
+		},
+		"good-removed-plugins-1": {
+			expectedToFail: false,
+			config:         goodRemovedPlugins1,
+		},
+		"good-removed-plugins-2": {
+			expectedToFail: false,
+			config:         goodRemovedPlugins2,
 		},
 	}
 

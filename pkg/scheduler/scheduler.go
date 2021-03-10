@@ -89,6 +89,7 @@ type Scheduler struct {
 }
 
 type schedulerOptions struct {
+	componentConfigVersion   string
 	schedulerAlgorithmSource schedulerapi.SchedulerAlgorithmSource
 	percentageOfNodesToScore int32
 	podInitialBackoffSeconds int64
@@ -103,6 +104,14 @@ type schedulerOptions struct {
 
 // Option configures a Scheduler
 type Option func(*schedulerOptions)
+
+// WithComponentConfigVersion sets the component config version for the
+// KubeSchedulerConfiguration used.
+func WithComponentConfigVersion(apiVersion string) Option {
+	return func(o *schedulerOptions) {
+		o.componentConfigVersion = apiVersion
+	}
+}
 
 // WithProfiles sets profiles for Scheduler. By default, there is one profile
 // with the name "default-scheduler".
@@ -213,6 +222,7 @@ func New(client clientset.Interface,
 	snapshot := internalcache.NewEmptySnapshot()
 
 	configurator := &Configurator{
+		componentConfigVersion:   options.componentConfigVersion,
 		client:                   client,
 		recorderFactory:          recorderFactory,
 		informerFactory:          informerFactory,

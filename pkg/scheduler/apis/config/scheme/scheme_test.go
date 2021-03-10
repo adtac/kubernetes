@@ -370,9 +370,6 @@ profiles:
   - name: InterPodAffinity
     args:
       hardPodAffinityWeight: 5
-  - name: NodeLabel
-    args:
-      presentLabels: ["foo"]
   - name: NodeResourcesFit
     args:
       ignoredResources: ["foo"]
@@ -386,9 +383,6 @@ profiles:
       - maxSkew: 1
         topologyKey: zone
         whenUnsatisfiable: ScheduleAnyway
-  - name: ServiceAffinity
-    args:
-      affinityLabels: ["bar"]
   - name: NodeResourcesLeastAllocated
     args:
       resources:
@@ -427,10 +421,6 @@ profiles:
 							Args: &config.InterPodAffinityArgs{HardPodAffinityWeight: 5},
 						},
 						{
-							Name: "NodeLabel",
-							Args: &config.NodeLabelArgs{PresentLabels: []string{"foo"}},
-						},
-						{
 							Name: "NodeResourcesFit",
 							Args: &config.NodeResourcesFitArgs{IgnoredResources: []string{"foo"}},
 						},
@@ -447,13 +437,7 @@ profiles:
 								DefaultConstraints: []corev1.TopologySpreadConstraint{
 									{MaxSkew: 1, TopologyKey: "zone", WhenUnsatisfiable: corev1.ScheduleAnyway},
 								},
-								DefaultingType: config.ListDefaulting,
-							},
-						},
-						{
-							Name: "ServiceAffinity",
-							Args: &config.ServiceAffinityArgs{
-								AffinityLabels: []string{"bar"},
+								DefaultingType: config.SystemDefaulting,
 							},
 						},
 						{
@@ -505,19 +489,19 @@ apiVersion: kubescheduler.config.k8s.io/v1beta2
 kind: KubeSchedulerConfiguration
 profiles:
 - pluginConfig:
-  - name: NodeLabel
+  - name: DefaultPreemption
     args:
       apiVersion: kubescheduler.config.k8s.io/v1beta2
-      kind: NodeLabelArgs
-      presentLabels: ["bars"]
+      kind: DefaultPreemptionArgs
+      minCandidateNodesPercentage: 50
 `),
 			wantProfiles: []config.KubeSchedulerProfile{
 				{
 					SchedulerName: "default-scheduler",
 					PluginConfig: []config.PluginConfig{
 						{
-							Name: "NodeLabel",
-							Args: &config.NodeLabelArgs{PresentLabels: []string{"bars"}},
+							Name: "DefaultPreemption",
+							Args: &config.DefaultPreemptionArgs{MinCandidateNodesPercentage: 50, MinCandidateNodesAbsolute: 100},
 						},
 					},
 				},
@@ -530,12 +514,12 @@ apiVersion: kubescheduler.config.k8s.io/v1beta2
 kind: KubeSchedulerConfiguration
 profiles:
 - pluginConfig:
-  - name: NodeLabel
+  - name: DefaultPreemption
     args:
       apiVersion: kubescheduler.config.k8s.io/v1beta2
       kind: InterPodAffinityArgs
 `),
-			wantErr: `decoding .profiles[0].pluginConfig[0]: args for plugin NodeLabel were not of type NodeLabelArgs.kubescheduler.config.k8s.io, got InterPodAffinityArgs.kubescheduler.config.k8s.io`,
+			wantErr: `decoding .profiles[0].pluginConfig[0]: args for plugin DefaultPreemption were not of type DefaultPreemptionArgs.kubescheduler.config.k8s.io, got InterPodAffinityArgs.kubescheduler.config.k8s.io`,
 		},
 		{
 			name: "v1beta2 RequestedToCapacityRatioArgs shape encoding is strict",
