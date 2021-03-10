@@ -107,11 +107,17 @@ func TestValidateKubeSchedulerConfiguration(t *testing.T) {
 	metricsBindAddrPortInvalid := validConfig.DeepCopy()
 	metricsBindAddrPortInvalid.MetricsBindAddress = "0.0.0.0:909090"
 
+	metricsBindAddrHostOnlyInvalid := validConfig.DeepCopy()
+	metricsBindAddrHostOnlyInvalid.MetricsBindAddress = "999.999.999.999"
+
 	healthzBindAddrHostInvalid := validConfig.DeepCopy()
 	healthzBindAddrHostInvalid.HealthzBindAddress = "0.0.0.0.0:9090"
 
 	healthzBindAddrPortInvalid := validConfig.DeepCopy()
 	healthzBindAddrPortInvalid.HealthzBindAddress = "0.0.0.0:909090"
+
+	healthzBindAddrHostOnlyInvalid := validConfig.DeepCopy()
+	healthzBindAddrHostOnlyInvalid.HealthzBindAddress = "999.999.999.999"
 
 	enableContentProfilingSetWithoutEnableProfiling := validConfig.DeepCopy()
 	enableContentProfilingSetWithoutEnableProfiling.EnableProfiling = false
@@ -176,6 +182,10 @@ func TestValidateKubeSchedulerConfiguration(t *testing.T) {
 			expectedToFail: true,
 			config:         healthzBindAddrHostInvalid,
 		},
+		"bad-healthz-host-only-invalid": {
+			expectedToFail: true,
+			config:         healthzBindAddrHostOnlyInvalid,
+		},
 		"bad-metrics-port-invalid": {
 			expectedToFail: true,
 			config:         metricsBindAddrPortInvalid,
@@ -183,6 +193,10 @@ func TestValidateKubeSchedulerConfiguration(t *testing.T) {
 		"bad-metrics-host-invalid": {
 			expectedToFail: true,
 			config:         metricsBindAddrHostInvalid,
+		},
+		"bad-metrics-host-only-invalid": {
+			expectedToFail: true,
+			config:         metricsBindAddrHostOnlyInvalid,
 		},
 		"bad-percentage-of-nodes-to-score": {
 			expectedToFail: true,

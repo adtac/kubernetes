@@ -19,16 +19,16 @@ package options
 import (
 	"fmt"
 	"io/ioutil"
-	"k8s.io/klog/v2"
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
-	kubeschedulerscheme "k8s.io/kubernetes/pkg/scheduler/apis/config/scheme"
-	kubeschedulerconfigv1beta1 "k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta1"
+	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config/scheme"
+	configv1beta2 "k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta2"
 )
 
-func loadConfigFromFile(file string) (*kubeschedulerconfig.KubeSchedulerConfiguration, error) {
+func loadConfigFromFile(file string) (*config.KubeSchedulerConfiguration, error) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 		return nil, err
@@ -37,32 +37,32 @@ func loadConfigFromFile(file string) (*kubeschedulerconfig.KubeSchedulerConfigur
 	return loadConfig(data)
 }
 
-func loadConfig(data []byte) (*kubeschedulerconfig.KubeSchedulerConfiguration, error) {
+func loadConfig(data []byte) (*config.KubeSchedulerConfiguration, error) {
 	// The UniversalDecoder runs defaulting and returns the internal type by default.
-	obj, gvk, err := kubeschedulerscheme.Codecs.UniversalDecoder().Decode(data, nil, nil)
+	obj, gvk, err := scheme.Codecs.UniversalDecoder().Decode(data, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	if cfgObj, ok := obj.(*kubeschedulerconfig.KubeSchedulerConfiguration); ok {
+	if cfgObj, ok := obj.(*config.KubeSchedulerConfiguration); ok {
 		return cfgObj, nil
 	}
 	return nil, fmt.Errorf("couldn't decode as KubeSchedulerConfiguration, got %s: ", gvk)
 }
 
 // LogOrWriteConfig logs the completed component config and writes it into the given file name as YAML, if either is enabled
-func LogOrWriteConfig(fileName string, cfg *kubeschedulerconfig.KubeSchedulerConfiguration, completedProfiles []kubeschedulerconfig.KubeSchedulerProfile) error {
+func LogOrWriteConfig(fileName string, cfg *config.KubeSchedulerConfiguration, completedProfiles []config.KubeSchedulerProfile) error {
 	if !(klog.V(2).Enabled() || len(fileName) > 0) {
 		return nil
 	}
 	cfg.Profiles = completedProfiles
 
 	const mediaType = runtime.ContentTypeYAML
-	info, ok := runtime.SerializerInfoForMediaType(kubeschedulerscheme.Codecs.SupportedMediaTypes(), mediaType)
+	info, ok := runtime.SerializerInfoForMediaType(scheme.Codecs.SupportedMediaTypes(), mediaType)
 	if !ok {
 		return fmt.Errorf("unable to locate encoder -- %q is not a supported media type", mediaType)
 	}
 
-	encoder := kubeschedulerscheme.Codecs.EncoderForVersion(info.Serializer, kubeschedulerconfigv1beta1.SchemeGroupVersion)
+	encoder := scheme.Codecs.EncoderForVersion(info.Serializer, configv1beta2.SchemeGroupVersion)
 	if klog.V(2).Enabled() {
 		bytes, err := runtime.Encode(encoder, cfg)
 		if err != nil {
